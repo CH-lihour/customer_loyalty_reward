@@ -1,111 +1,285 @@
-import { useState } from 'react';
-import { products as initialProducts, categories } from '../../data/mockData';
+import { useState, type FormEvent } from "react"
+import { categories, type Product } from "../../data/mockData"
+import { useShop } from "../../data/shop"
+import { useFeedback } from "../../components/FeedbackProvider"
+import { AdminModal } from "../../components/AdminModal"
+
+const blank = (): Product => ({
+  id: "",
+  name: "",
+  nameKh: "",
+  category: "Coffee & Tea",
+  price: 0,
+  stock: 0,
+  image: "",
+  description: "",
+  normalPoints: 0,
+  bonusMultiplier: 1,
+  featured: false,
+})
+const input =
+  "w-full rounded-lg border border-[var(--border)] bg-[var(--secondary)] px-3 py-2 text-sm"
 
 export function AdminProductsPage() {
-  const [products, setProducts] = useState(initialProducts);
-  const [catFilter, setCatFilter] = useState('All');
-  const [adding, setAdding] = useState(false);
-  const [newName, setNewName] = useState('');
-  const [newPrice, setNewPrice] = useState('');
-  const [newCat, setNewCat] = useState('Coffee & Tea');
-
-  const filtered = products.filter(p => catFilter === 'All' || p.category === catFilter);
-
-  const handleDelete = (id: string) => setProducts(prev => prev.filter(p => p.id !== id));
-
-  const handleAdd = () => {
-    if (!newName || !newPrice) return;
-    setProducts(prev => [...prev, {
-      id: `p-new-${Date.now()}`,
-      name: newName,
-      nameKh: '',
-      category: newCat,
-      price: parseFloat(newPrice),
-      stock: 10,
-      image: 'https://images.unsplash.com/photo-1607082349566-187342175e2f?w=400&h=300&fit=crop&auto=format',
-      description: '',
-      normalPoints: Math.floor(parseFloat(newPrice)),
-      bonusMultiplier: 1,
-      featured: false,
-    }]);
-    setNewName('');
-    setNewPrice('');
-    setAdding(false);
-  };
-
+  const { products, saveProduct, deleteProduct } = useShop()
+  const { notify, confirm } = useFeedback()
+  const [editing, setEditing] = useState<Product | null>(null)
+  const [filter, setFilter] = useState("All")
+  const [error, setError] = useState("")
+  const change = <K extends keyof Product>(key: K, value: Product[K]) =>
+    setEditing((p) => (p ? { ...p, [key]: value } : p))
+  const save = (event: FormEvent) => {
+    event.preventDefault()
+    if (
+      !editing ||
+      !editing.name.trim() ||
+      !editing.category ||
+      editing.price <= 0 ||
+      editing.stock < 0 ||
+      editing.normalPoints < 0 ||
+      editing.bonusMultiplier < 1
+    ) {
+      setError("Enter a name, positive price, valid stock, and point values.")
+      return
+    }
+    saveProduct({
+      ...editing,
+      id: editing.id || `p-${Date.now()}`,
+      image:
+        editing.image.trim() ||
+        "https://images.unsplash.com/photo-1607082349566-187342175e2f?w=400&h=300&fit=crop&auto=format",
+    })
+    setEditing(null)
+    setError("")
+    notify("Product saved.", "success")
+  }
   return (
-    <div className="flex flex-col gap-5">
-      <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="font-display text-2xl font-semibold">Products</h1>
-        <div className="flex gap-2 flex-wrap items-center">
-          {categories.map(c => (
-            <button key={c} onClick={() => setCatFilter(c)} className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${catFilter === c ? 'bg-[var(--gold-mid)] text-[var(--background)]' : 'bg-[var(--card)] border border-[var(--border)] text-[var(--muted-foreground)]'}`}>{c}</button>
-          ))}
-          <button onClick={() => setAdding(true)} className="px-3 py-1.5 rounded-lg bg-[var(--gold-mid)] text-[var(--background)] text-xs font-semibold hover:bg-[var(--gold-light)] transition-colors">+ Add Product</button>
-        </div>
+        <button
+          onClick={() => setEditing(blank())}
+          className="rounded-lg bg-[var(--gold-mid)] px-4 py-2 text-sm font-semibold text-[var(--background)]"
+        >
+          + Add Product
+        </button>
       </div>
-
-      {adding && (
-        <div className="bg-[var(--card)] rounded-xl p-5 border border-[var(--gold-mid)]/30">
-          <h3 className="font-semibold mb-3 text-sm">New Product</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <input value={newName} onChange={e => setNewName(e.target.value)} placeholder="Product name" className="px-3 py-2 rounded-lg bg-[var(--secondary)] border border-[var(--border)] text-sm focus:outline-none focus:border-[var(--gold-mid)]/50" />
-            <input value={newPrice} onChange={e => setNewPrice(e.target.value)} placeholder="Price ($)" type="number" className="px-3 py-2 rounded-lg bg-[var(--secondary)] border border-[var(--border)] text-sm focus:outline-none focus:border-[var(--gold-mid)]/50" />
-            <select value={newCat} onChange={e => setNewCat(e.target.value)} className="px-3 py-2 rounded-lg bg-[var(--secondary)] border border-[var(--border)] text-sm focus:outline-none text-[var(--foreground)]">
-              {categories.filter(c => c !== 'All').map(c => <option key={c}>{c}</option>)}
-            </select>
-          </div>
-          <div className="flex gap-2 mt-3">
-            <button onClick={handleAdd} className="px-4 py-2 rounded-lg bg-[var(--gold-mid)] text-[var(--background)] text-sm font-semibold hover:bg-[var(--gold-light)] transition-colors">Save</button>
-            <button onClick={() => setAdding(false)} className="px-4 py-2 rounded-lg bg-[var(--secondary)] text-[var(--muted-foreground)] text-sm transition-colors">Cancel</button>
-          </div>
-        </div>
+      <div className="flex gap-2 overflow-x-auto">
+        {categories.map((c) => (
+          <button
+            key={c}
+            onClick={() => setFilter(c)}
+            className={`shrink-0 rounded-full px-3 py-1 text-xs ${
+              filter === c
+                ? "bg-[var(--gold-mid)] text-[var(--background)]"
+                : "border border-[var(--border)] bg-[var(--card)]"
+            }`}
+          >
+            {c}
+          </button>
+        ))}
+      </div>
+      {editing && (
+        <AdminModal
+          title={editing.id ? "Edit Product" : "New Product"}
+          onClose={() => {
+            setEditing(null)
+            setError("")
+          }}
+          wide
+        >
+          <form onSubmit={save} className="space-y-3">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <label className="text-xs">
+                Name
+                <input
+                  className={input}
+                  value={editing.name}
+                  onChange={(e) => change("name", e.target.value)}
+                  required
+                />
+              </label>
+              <label className="text-xs">
+                Khmer name
+                <input
+                  className={input}
+                  value={editing.nameKh}
+                  onChange={(e) => change("nameKh", e.target.value)}
+                />
+              </label>
+              <label className="text-xs">
+                Category
+                <select
+                  className={input}
+                  value={editing.category}
+                  onChange={(e) => change("category", e.target.value)}
+                >
+                  {categories
+                    .filter((c) => c !== "All")
+                    .map((c) => (
+                      <option key={c}>{c}</option>
+                    ))}
+                </select>
+              </label>
+              <label className="text-xs">
+                Price (USD)
+                <input
+                  className={input}
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  value={editing.price}
+                  onChange={(e) => change("price", Number(e.target.value))}
+                  required
+                />
+              </label>
+              <label className="text-xs">
+                Stock
+                <input
+                  className={input}
+                  type="number"
+                  min="0"
+                  value={editing.stock}
+                  onChange={(e) => change("stock", Number(e.target.value))}
+                  required
+                />
+              </label>
+              <label className="text-xs">
+                Base points
+                <input
+                  className={input}
+                  type="number"
+                  min="0"
+                  value={editing.normalPoints}
+                  onChange={(e) =>
+                    change("normalPoints", Number(e.target.value))
+                  }
+                  required
+                />
+              </label>
+              <label className="text-xs">
+                Bonus multiplier
+                <input
+                  className={input}
+                  type="number"
+                  min="1"
+                  step="0.1"
+                  value={editing.bonusMultiplier}
+                  onChange={(e) =>
+                    change("bonusMultiplier", Number(e.target.value))
+                  }
+                  required
+                />
+              </label>
+              <label className="text-xs sm:col-span-2">
+                Image URL
+                <input
+                  className={input}
+                  type="url"
+                  value={editing.image}
+                  onChange={(e) => change("image", e.target.value)}
+                  placeholder="Optional"
+                />
+              </label>
+              <label className="text-xs sm:col-span-2 lg:col-span-3">
+                Description
+                <textarea
+                  className={input}
+                  value={editing.description}
+                  onChange={(e) => change("description", e.target.value)}
+                />
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={editing.featured}
+                  onChange={(e) => change("featured", e.target.checked)}
+                />{" "}
+                Featured product
+              </label>
+            </div>
+            {error && (
+              <p role="alert" className="text-sm text-red-400">
+                {error}
+              </p>
+            )}
+            <div className="flex gap-2">
+              <button className="rounded-lg bg-[var(--gold-mid)] px-4 py-2 text-[var(--background)]">
+                Save Product
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setEditing(null)
+                  setError("")
+                }}
+                className="rounded-lg bg-[var(--secondary)] px-4 py-2"
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        </AdminModal>
       )}
-
-      <div className="bg-[var(--card)] rounded-xl border border-[var(--border)] overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="border-b border-[var(--border)] bg-[var(--secondary)]">
-              <tr className="text-[var(--muted-foreground)] text-xs">
-                <th className="text-left px-4 py-3 font-medium">Product</th>
-                <th className="text-left px-4 py-3 font-medium">Category</th>
-                <th className="text-right px-4 py-3 font-medium">Price</th>
-                <th className="text-right px-4 py-3 font-medium">Stock</th>
-                <th className="text-right px-4 py-3 font-medium">Base Pts</th>
-                <th className="text-right px-4 py-3 font-medium">Multiplier</th>
-                <th className="text-right px-4 py-3 font-medium">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[var(--border)]">
-              {filtered.map(p => (
-                <tr key={p.id} className="hover:bg-[var(--secondary)] transition-colors">
-                  <td className="px-4 py-3">
+      <div className="overflow-x-auto rounded-xl border border-[var(--border)] bg-[var(--card)]">
+        <table className="w-full text-sm">
+          <thead className="bg-[var(--secondary)] text-xs text-[var(--muted-foreground)]">
+            <tr>
+              <th className="p-3 text-left">Product</th>
+              <th className="p-3 text-left">Category</th>
+              <th className="p-3 text-right">Price</th>
+              <th className="p-3 text-right">Stock</th>
+              <th className="p-3 text-right">Points</th>
+              <th className="p-3 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {products
+              .filter((p) => filter === "All" || p.category === filter)
+              .map((p) => (
+                <tr key={p.id} className="border-t border-[var(--border)]">
+                  <td className="p-3">
                     <div className="flex items-center gap-2">
-                      <img src={p.image} alt={p.name} className="w-8 h-8 rounded-lg object-cover" />
-                      <div>
-                        <div className="font-medium text-xs">{p.name}</div>
-                        <div className="text-xs text-[var(--muted-foreground)]">{p.nameKh}</div>
-                      </div>
+                      <img
+                        className="h-9 w-9 rounded object-cover"
+                        src={p.image}
+                        alt=""
+                      />
+                      {p.name}
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-xs text-[var(--muted-foreground)]">{p.category}</td>
-                  <td className="px-4 py-3 text-right font-mono-data text-xs text-[var(--gold-mid)]">${p.price}</td>
-                  <td className="px-4 py-3 text-right text-xs">
-                    <span className={p.stock < 20 ? 'text-red-400' : ''}>{p.stock}</span>
+                  <td className="p-3">{p.category}</td>
+                  <td className="p-3 text-right">${p.price.toFixed(2)}</td>
+                  <td className="p-3 text-right">{p.stock}</td>
+                  <td className="p-3 text-right">
+                    {p.normalPoints} Ã— {p.bonusMultiplier}
                   </td>
-                  <td className="px-4 py-3 text-right text-xs">{p.normalPoints}</td>
-                  <td className="px-4 py-3 text-right text-xs">
-                    {p.bonusMultiplier > 1 ? <span className="text-[var(--gold-mid)] font-semibold">{p.bonusMultiplier}×</span> : <span className="text-[var(--muted-foreground)]">1×</span>}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <button onClick={() => handleDelete(p.id)} className="text-xs text-red-400/60 hover:text-red-400 transition-colors">Delete</button>
+                  <td className="p-3 text-right whitespace-nowrap">
+                    <button
+                      onClick={() => setEditing(p)}
+                      className="text-[var(--gold-mid)] mr-3"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => {
+                        void confirm(`Delete ${p.name}?`).then((ok) => {
+                          if (ok) {
+                            deleteProduct(p.id)
+                            notify(`${p.name} deleted.`, "success")
+                          }
+                        })
+                      }}
+                      className="text-red-400"
+                    >
+                      Delete
+                    </button>
                   </td>
                 </tr>
               ))}
-            </tbody>
-          </table>
-        </div>
+          </tbody>
+        </table>
       </div>
     </div>
-  );
+  )
 }

@@ -1,106 +1,186 @@
-import { useState } from 'react';
-import { customers } from '../../data/mockData';
-import { TierBadge } from '../../components/TierBadge';
-import type { Tier } from '../../data/mockData';
+﻿import { useState, type FormEvent } from "react"
+import { type Tier } from "../../data/mockData"
+import { useShop } from "../../data/shop"
+import { useFeedback } from "../../components/FeedbackProvider"
+import { TierBadge } from "../../components/TierBadge"
+import { AdminModal } from "../../components/AdminModal"
+
+const tiers: Tier[] = ["Silver", "Gold", "Platinum"]
 
 export function AdminTiersPage() {
-  const [config, setConfig] = useState({
-    Silver: { min: 0, max: 999, multiplier: 1 },
-    Gold: { min: 1000, max: 4999, multiplier: 1.5 },
-    Platinum: { min: 5000, max: Infinity, multiplier: 2 },
-  });
+  const shop = useShop()
+  const { notify } = useFeedback()
+  const [draft, setDraft] = useState(shop.tiers)
+  const [editing, setEditing] = useState(false)
+  const [message, setMessage] = useState("")
 
-  const tiers: Tier[] = ['Silver', 'Gold', 'Platinum'];
-  const tierColors: Record<Tier, string> = { Silver: '#94a3b8', Gold: '#e8a634', Platinum: '#a78bfa' };
+  const openEditor = () => {
+    setDraft(shop.tiers)
+    setMessage("")
+    setEditing(true)
+  }
+
+  const save = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (
+      draft.Silver.min !== 0 ||
+      draft.Gold.min <= 0 ||
+      draft.Platinum.min <= draft.Gold.min ||
+      tiers.some((tier) => draft[tier].multiplier < 1)
+    ) {
+      setMessage(
+        "Thresholds must increase from Silver 0, and multipliers must be at least 1.",
+      )
+      notify("Please correct the tier thresholds and multipliers.", "error")
+      return
+    }
+    tiers.forEach((tier) =>
+      shop.saveTier(tier, {
+        ...draft[tier],
+        max:
+          tier === "Silver"
+            ? draft.Gold.min - 1
+            : tier === "Gold"
+              ? draft.Platinum.min - 1
+              : Infinity,
+      }),
+    )
+    setEditing(false)
+    setMessage("Tier rules saved. Customer tiers were recalculated.")
+    notify("Tier rules saved and customer tiers recalculated.", "success")
+  }
 
   return (
-    <div className="flex flex-col gap-5">
-      <h1 className="font-display text-2xl font-semibold">Membership Tiers</h1>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {tiers.map(tier => {
-          const c = config[tier];
-          const count = customers.filter(cu => cu.tier === tier).length;
-          return (
-            <div key={tier} className="bg-[var(--card)] rounded-xl p-5 border border-[var(--border)]">
-              <div className="flex items-center justify-between mb-4">
-                <TierBadge tier={tier} size="md" />
-                <span className="font-mono-data text-sm font-bold text-[var(--gold-mid)]">{count} members</span>
-              </div>
-
-              <div className="flex flex-col gap-3 text-sm">
-                <div>
-                  <label className="text-xs text-[var(--muted-foreground)] block mb-1">Min Points</label>
-                  <input
-                    type="number"
-                    value={c.min}
-                    onChange={e => setConfig(prev => ({ ...prev, [tier]: { ...prev[tier], min: parseInt(e.target.value) } }))}
-                    className="w-full px-3 py-1.5 rounded-lg bg-[var(--secondary)] border border-[var(--border)] text-sm focus:outline-none focus:border-[var(--gold-mid)]/50 font-mono-data"
-                    disabled={tier === 'Silver'}
-                  />
-                </div>
-                <div>
-                  <label className="text-xs text-[var(--muted-foreground)] block mb-1">Max Points</label>
-                  <input
-                    type="text"
-                    value={tier === 'Platinum' ? '∞' : c.max}
-                    onChange={e => tier !== 'Platinum' && setConfig(prev => ({ ...prev, [tier]: { ...prev[tier], max: parseInt(e.target.value) } }))}
-                    className="w-full px-3 py-1.5 rounded-lg bg-[var(--secondary)] border border-[var(--border)] text-sm focus:outline-none focus:border-[var(--gold-mid)]/50 font-mono-data"
-                    disabled={tier === 'Platinum'}
-                  />
-                </div>
-                <div>
-                  <label className="text-xs text-[var(--muted-foreground)] block mb-1">Point Multiplier</label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    value={c.multiplier}
-                    onChange={e => setConfig(prev => ({ ...prev, [tier]: { ...prev[tier], multiplier: parseFloat(e.target.value) } }))}
-                    className="w-full px-3 py-1.5 rounded-lg bg-[var(--secondary)] border border-[var(--border)] text-sm focus:outline-none focus:border-[var(--gold-mid)]/50 font-mono-data"
-                  />
-                </div>
-              </div>
-
-              <div className="mt-4 pt-4 border-t border-[var(--border)]">
-                <div className="text-xs text-[var(--muted-foreground)] mb-2">Benefits</div>
-                {tier === 'Silver' && <ul className="text-xs space-y-1 text-[var(--muted-foreground)]"><li>• Basic reward catalog</li><li>• Free shipping vouchers</li><li>• Standard support</li></ul>}
-                {tier === 'Gold' && <ul className="text-xs space-y-1 text-[var(--muted-foreground)]"><li>• Gold reward catalog</li><li>• Gold-exclusive promotions</li><li>• Priority checkout</li></ul>}
-                {tier === 'Platinum' && <ul className="text-xs space-y-1 text-[var(--muted-foreground)]"><li>• Platinum-exclusive rewards</li><li>• Highest point multiplier</li><li>• Priority support</li></ul>}
-              </div>
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h1 className="font-display text-2xl font-semibold">
+          Membership Tiers
+        </h1>
+        <button
+          onClick={openEditor}
+          className="rounded-lg bg-[var(--gold-mid)] px-4 py-2 font-semibold text-[var(--background)]"
+        >
+          Edit Tier Rules
+        </button>
+      </div>
+      {message && !editing && (
+        <p role="status" className="text-sm text-[var(--gold-mid)]">
+          {message}
+        </p>
+      )}
+      <div className="grid gap-4 md:grid-cols-3">
+        {tiers.map((tier) => (
+          <div
+            key={tier}
+            className="space-y-4 rounded-xl border border-[var(--border)] bg-[var(--card)] p-5"
+          >
+            <div className="flex items-center justify-between">
+              <TierBadge tier={tier} size="md" />
+              <span className="text-sm">
+                {
+                  shop.customers.filter((customer) => customer.tier === tier)
+                    .length
+                }{" "}
+                members
+              </span>
             </div>
-          );
-        })}
+            <p className="text-sm">
+              Minimum qualifying points: {shop.tiers[tier].min.toLocaleString()}
+            </p>
+            <p className="text-sm">
+              Point multiplier: {shop.tiers[tier].multiplier}×
+            </p>
+            <p className="text-xs text-[var(--muted-foreground)]">
+              Range: {shop.tiers[tier].min.toLocaleString()} –{" "}
+              {Number.isFinite(shop.tiers[tier].max)
+                ? shop.tiers[tier].max.toLocaleString()
+                : "∞"}
+            </p>
+          </div>
+        ))}
       </div>
-
-      <div className="bg-[var(--card)] rounded-xl p-5 border border-[var(--border)]">
-        <h3 className="font-semibold mb-3 text-sm">Customer Tier Overview</h3>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="border-b border-[var(--border)]">
-              <tr className="text-[var(--muted-foreground)] text-xs">
-                <th className="text-left pb-2 font-medium">Customer</th>
-                <th className="text-left pb-2 font-medium">Current Tier</th>
-                <th className="text-right pb-2 font-medium">Points</th>
-                <th className="text-right pb-2 font-medium">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[var(--border)]">
-              {customers.map(c => (
-                <tr key={c.id} className="hover:bg-[var(--secondary)] transition-colors">
-                  <td className="py-2.5">{c.name}</td>
-                  <td className="py-2.5"><TierBadge tier={c.tier} /></td>
-                  <td className="py-2.5 text-right font-mono-data text-xs text-[var(--gold-mid)]">{c.points.toLocaleString()}</td>
-                  <td className="py-2.5 text-right">
-                    <select defaultValue={c.tier} className="text-xs bg-[var(--secondary)] border border-[var(--border)] rounded px-2 py-1 text-[var(--foreground)] focus:outline-none">
-                      {tiers.map(t => <option key={t} value={t}>{t}</option>)}
-                    </select>
-                  </td>
-                </tr>
+      <p className="text-xs text-[var(--muted-foreground)]">
+        Tier progress uses qualifying points earned from completed orders.
+        Spending points on rewards does not remove tier progress.
+      </p>
+      {editing && (
+        <AdminModal
+          title="Edit Tier Rules"
+          onClose={() => setEditing(false)}
+          wide
+        >
+          <form onSubmit={save} className="space-y-5">
+            <div className="grid gap-4 md:grid-cols-3">
+              {tiers.map((tier) => (
+                <div
+                  key={tier}
+                  className="space-y-4 rounded-xl border border-[var(--border)] bg-[var(--secondary)] p-4"
+                >
+                  <TierBadge tier={tier} size="md" />
+                  <label className="block text-xs">
+                    Minimum qualifying points
+                    <input
+                      disabled={tier === "Silver"}
+                      type="number"
+                      min="0"
+                      value={draft[tier].min}
+                      onChange={(event) =>
+                        setDraft((current) => ({
+                          ...current,
+                          [tier]: {
+                            ...current[tier],
+                            min: Number(event.target.value),
+                          },
+                        }))
+                      }
+                      className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--card)] px-3 py-2"
+                    />
+                  </label>
+                  <label className="block text-xs">
+                    Point multiplier
+                    <input
+                      type="number"
+                      min="1"
+                      step="0.1"
+                      value={draft[tier].multiplier}
+                      onChange={(event) =>
+                        setDraft((current) => ({
+                          ...current,
+                          [tier]: {
+                            ...current[tier],
+                            multiplier: Number(event.target.value),
+                          },
+                        }))
+                      }
+                      className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--card)] px-3 py-2"
+                    />
+                  </label>
+                </div>
               ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+            </div>
+            {message && (
+              <p role="alert" className="text-sm text-red-400">
+                {message}
+              </p>
+            )}
+            <div className="flex gap-2">
+              <button
+                type="submit"
+                className="rounded-lg bg-[var(--gold-mid)] px-4 py-2 font-semibold text-[var(--background)]"
+              >
+                Save Tier Rules
+              </button>
+              <button
+                type="button"
+                onClick={() => setEditing(false)}
+                className="rounded-lg bg-[var(--secondary)] px-4 py-2"
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        </AdminModal>
+      )}
     </div>
-  );
+  )
 }
