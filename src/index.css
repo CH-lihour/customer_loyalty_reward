@@ -1,0 +1,119 @@
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,600;0,9..144,700;1,9..144,300;1,9..144,400&family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+@import 'tailwindcss';
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-border: var(--border);
+  --color-ring: var(--ring);
+  --radius-DEFAULT: var(--radius);
+}
+
+:root {
+  --background: #0d0f14;
+  --foreground: #f0ece3;
+  --card: #161a22;
+  --card-foreground: #f0ece3;
+  --primary: #e8a634;
+  --primary-foreground: #0d0f14;
+  --secondary: #1e2330;
+  --secondary-foreground: #c8c2b4;
+  --muted: #1a1e28;
+  --muted-foreground: #7a7568;
+  --accent: #f0c55a;
+  --accent-foreground: #0d0f14;
+  --border: rgba(232, 166, 52, 0.12);
+  --ring: #e8a634;
+  --radius: 10px;
+
+  --gold-light: #f5d78e;
+  --gold-mid: #e8a634;
+  --gold-dark: #b87c1c;
+  --silver-tier: #94a3b8;
+  --platinum-tier: #e2d9f3;
+}
+
+* {
+  box-sizing: border-box;
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+*:hover {
+  scrollbar-color: rgba(232, 166, 52, 0.2) transparent;
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: 'Outfit', sans-serif;
+  font-size: 15px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3 {
+  font-family: 'Fraunces', serif;
+}
+
+.font-display {
+  font-family: 'Fraunces', serif;
+}
+
+.font-mono-data {
+  font-family: 'JetBrains Mono', monospace;
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.tier-silver { color: var(--silver-tier); }
+.tier-gold { color: var(--gold-mid); }
+.tier-platinum { color: var(--platinum-tier); }
+
+.tier-badge-silver {
+  background: linear-gradient(135deg, #64748b, #94a3b8);
+  color: #fff;
+}
+.tier-badge-gold {
+  background: linear-gradient(135deg, #b87c1c, #e8a634, #f5d78e);
+  color: #0d0f14;
+}
+.tier-badge-platinum {
+  background: linear-gradient(135deg, #7c3aed, #a78bfa, #e2d9f3);
+  color: #fff;
+}
+
+.progress-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(232,166,52,0.15);
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: linear-gradient(90deg, var(--gold-dark), var(--gold-mid), var(--gold-light));
+  transition: width 0.6s ease;
+}
+
+.card-glow:hover {
+  box-shadow: 0 0 0 1px rgba(232, 166, 52, 0.25), 0 8px 32px rgba(232, 166, 52, 0.08);
+  transition: box-shadow 0.2s ease;
+}
+
+.nav-link-active {
+  color: var(--gold-mid);
+  background: rgba(232, 166, 52, 0.08);
+}

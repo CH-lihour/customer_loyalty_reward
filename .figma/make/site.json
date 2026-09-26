@@ -1,0 +1,10 @@
+{
+  "description": "Enables users to create and manage detailed prompts efficiently, enhancing productivity and creativity for writers and content creators.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}
