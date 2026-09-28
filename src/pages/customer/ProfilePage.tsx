@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { useShop } from '../../data/shop';
 import { useFeedback } from '../../components/FeedbackProvider';
 import { TierBadge } from '../../components/TierBadge';
+import { Icon } from '../../components/Icon';
 
 const provinces = ['Phnom Penh', 'Siem Reap', 'Battambang', 'Kampong Cham', 'Kampot', 'Sihanoukville', 'Kandal', 'Takeo'];
 const field = 'w-full rounded-lg border border-[var(--border)] bg-[var(--secondary)] px-3 py-2 text-sm outline-none focus:border-[var(--gold-mid)]';
@@ -62,7 +63,7 @@ export function ProfilePage() {
     </div>
     <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-5">
       <h2 className="mb-3 font-semibold">Badges ({user.badges.length})</h2>
-      <div className="flex flex-wrap gap-2">{shop.badges.filter(badge => user.badges.includes(badge.code)).map(badge => <span key={badge.id} className="rounded-lg bg-[var(--secondary)] px-3 py-2 text-sm">{badge.icon} {badge.name}</span>)}</div>
+      <div className="flex flex-wrap gap-2">{shop.badges.filter(badge => user.badges.includes(badge.code)).map(badge => <span key={badge.id} className="inline-flex items-center gap-2 rounded-lg bg-[var(--secondary)] px-3 py-2 text-sm"><Icon name={badge.icon} className="h-4 w-4 text-[var(--gold-mid)]" /> {badge.name}</span>)}</div>
     </div>
   </div>;
 }

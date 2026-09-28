@@ -5,6 +5,7 @@ import { useShop } from "../../data/shop";
 
 interface Props {
   onAddToCart: (productId: string) => void;
+  guest?: boolean;
 }
 
 function ProductDetail({
@@ -12,11 +13,13 @@ function ProductDetail({
   money,
   onClose,
   onAddToCart,
+  guest,
 }: {
   product: Product;
   money: (amount: number) => string;
   onClose: () => void;
   onAddToCart: (productId: string) => void;
+  guest: boolean;
 }) {
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
@@ -93,7 +96,7 @@ function ProductDetail({
             }}
             className="w-full rounded-lg bg-[var(--gold-mid)] py-2 font-semibold text-[var(--background)] disabled:opacity-40"
           >
-            {product.stock < 1 ? "Out of Stock" : "Add to Cart"}
+            {product.stock < 1 ? "Out of Stock" : guest ? "Sign in to add" : "Add to Cart"}
           </button>
         </div>
       </section>
@@ -102,7 +105,7 @@ function ProductDetail({
   );
 }
 
-export function ProductsPage({ onAddToCart }: Props) {
+export function ProductsPage({ onAddToCart, guest = false }: Props) {
   const { products, money } = useShop();
   const [activeCategory, setActiveCategory] = useState("All");
   const [search, setSearch] = useState("");
@@ -217,7 +220,7 @@ export function ProductsPage({ onAddToCart }: Props) {
                   disabled={product.stock < 1}
                   className="rounded-lg bg-[var(--gold-mid)] py-2 text-xs font-semibold text-[var(--background)] disabled:opacity-40"
                 >
-                  {product.stock < 1 ? "Sold Out" : "Add to Cart"}
+                  {product.stock < 1 ? "Sold Out" : guest ? "Sign in to add" : "Add to Cart"}
                 </button>
               </div>
             </div>
@@ -236,6 +239,7 @@ export function ProductsPage({ onAddToCart }: Props) {
           money={money}
           onClose={() => setSelectedId(null)}
           onAddToCart={onAddToCart}
+          guest={guest}
         />
       )}
     </div>

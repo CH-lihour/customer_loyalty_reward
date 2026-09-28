@@ -1,9 +1,10 @@
-import type { Tier } from "../data/mockData";
+﻿import type { Tier } from "../data/mockData";
+import { Icon } from "./Icon";
 
 const icons: Record<Tier, string> = {
-  Silver: "🥈",
-  Gold: "🥇",
-  Platinum: "💎",
+  Silver: "medal",
+  Gold: "medal",
+  Platinum: "gem",
 };
 const labels: Record<Tier, string> = {
   Silver: "Silver",
@@ -28,7 +29,7 @@ export function TierBadge({
     <span
       className={`inline-flex items-center gap-1 rounded-full font-semibold tier-badge-${tier.toLowerCase()} ${pad}`}
     >
-      {icons[tier]} {labels[tier]}
+      <Icon name={icons[tier]} className="h-3.5 w-3.5" /> {labels[tier]}
     </span>
   );
 }

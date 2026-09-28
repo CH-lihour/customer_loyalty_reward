@@ -1,6 +1,7 @@
-import { type ReactNode } from "react";
+﻿import { type ReactNode } from "react";
 import { useShop } from "../data/shop";
 import { TierBadge } from "./TierBadge";
+import { Icon } from "./Icon";
 
 type CustomerPage =
   | "home"
@@ -21,15 +22,15 @@ const navItems: {
   icon: string;
 }[] = [
   { id: "home", label: "Home", labelKh: "ទំព័រដើម", icon: "⌂" },
-  { id: "products", label: "Products", labelKh: "ផលិតផល", icon: "🛍" },
-  { id: "cart", label: "Cart", labelKh: "កន្ត្រក", icon: "🛒" },
-  { id: "orders", label: "Orders", labelKh: "ការបញ្ជាទិញ", icon: "📦" },
-  { id: "rewards", label: "Rewards", labelKh: "រង្វាន់", icon: "🎁" },
-  { id: "points", label: "My Points", labelKh: "ពិន្ទុ", icon: "⭐" },
-  { id: "tier", label: "My Tier", labelKh: "កម្រិត", icon: "🏆" },
-  { id: "badges", label: "Badges", labelKh: "គ្រឿងសំគាល់", icon: "🏅" },
-  { id: "referrals", label: "Referrals", labelKh: "ការណែនាំ", icon: "🤝" },
-  { id: "profile", label: "Profile", labelKh: "គណនី", icon: "👤" },
+  { id: "products", label: "Products", labelKh: "ផលិតផល", icon: "products" },
+  { id: "cart", label: "Cart", labelKh: "កន្ត្រក", icon: "cart" },
+  { id: "orders", label: "Orders", labelKh: "ការបញ្ជាទិញ", icon: "orders" },
+  { id: "rewards", label: "Rewards", labelKh: "រង្វាន់", icon: "gift" },
+  { id: "points", label: "My Points", labelKh: "ពិន្ទុ", icon: "star" },
+  { id: "tier", label: "My Tier", labelKh: "កម្រិត", icon: "trophy" },
+  { id: "badges", label: "Badges", labelKh: "គ្រឿងសំគាល់", icon: "medal" },
+  { id: "referrals", label: "Referrals", labelKh: "ការណែនាំ", icon: "users" },
+  { id: "profile", label: "Profile", labelKh: "គណនី", icon: "user" },
 ];
 
 interface Props {
@@ -37,6 +38,8 @@ interface Props {
   onNav: (p: CustomerPage) => void;
   cartCount?: number;
   onLogout: () => void;
+  guest?: boolean;
+  onSignIn?: () => void;
   children: ReactNode;
 }
 
@@ -45,6 +48,8 @@ export function CustomerLayout({
   onNav,
   cartCount = 0,
   onLogout,
+  guest = false,
+  onSignIn,
   children,
 }: Props) {
   const shop = useShop();
@@ -58,7 +63,7 @@ export function CustomerLayout({
             onClick={() => onNav("home")}
             className="flex items-center gap-2 shrink-0"
           >
-            <span className="text-xl">🇰🇭</span>
+            <Icon name="shop" className="h-6 w-6 text-[var(--gold-mid)]" />
             <span className="font-display text-lg font-semibold text-[var(--gold-mid)] leading-none">
               KhmerShop
             </span>
@@ -66,7 +71,7 @@ export function CustomerLayout({
 
           {/* Desktop nav */}
           <nav className="hidden lg:flex items-center gap-1">
-            {navItems.map((item) => (
+            {navItems.filter((item) => !guest || ["home", "products", "cart"].includes(item.id)).map((item) => (
               <button
                 key={item.id}
                 onClick={() => onNav(item.id)}
@@ -94,28 +99,25 @@ export function CustomerLayout({
             </button>
             <button
               onClick={() => onNav("cart")}
+              aria-label="Cart"
               className="relative lg:hidden p-2 rounded-lg hover:bg-[var(--secondary)] transition-colors text-[var(--muted-foreground)]"
             >
-              🛒
+              <Icon name="cart" />
               {cartCount > 0 && (
                 <span className="absolute top-0 right-0 w-4 h-4 rounded-full bg-[var(--gold-mid)] text-[var(--background)] text-xs font-bold flex items-center justify-center">
                   {cartCount}
                 </span>
               )}
             </button>
-            <div className="flex items-center gap-2">
-              <img
-                src={CURRENT_USER.avatar}
-                alt={CURRENT_USER.name}
-                className="w-7 h-7 rounded-full object-cover ring-1 ring-[var(--gold-mid)]/40"
-              />
+            {!guest && <div className="flex items-center gap-2">
+              <img src={CURRENT_USER.avatar} alt={CURRENT_USER.name} className="w-7 h-7 rounded-full object-cover ring-1 ring-[var(--gold-mid)]/40" />
               <TierBadge tier={CURRENT_USER.tier} />
-            </div>
+            </div>}
             <button
-              onClick={onLogout}
+              onClick={guest ? onSignIn : onLogout}
               className="text-xs text-[var(--muted-foreground)] hover:text-[var(--gold-mid)] border border-[var(--border)] rounded-md px-2 py-1 transition-colors"
             >
-              Sign out
+              {guest ? "Sign in" : "Sign out"}
             </button>
           </div>
         </div>
@@ -124,13 +126,13 @@ export function CustomerLayout({
       {/* Mobile nav */}
       <div className="lg:hidden sticky top-14 z-40 bg-[var(--card)] border-b border-[var(--border)] overflow-x-auto">
         <div className="flex min-w-max px-2 py-1.5 gap-1">
-          {navItems.map((item) => (
+          {navItems.filter((item) => !guest || ["home", "products", "cart"].includes(item.id)).map((item) => (
             <button
               key={item.id}
               onClick={() => onNav(item.id)}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-colors relative ${page === item.id ? "nav-link-active" : "text-[var(--muted-foreground)]"}`}
             >
-              <span>{item.icon}</span> {item.label}
+              <Icon name={item.icon} className="h-4 w-4" /> {item.label}
               {item.id === "cart" && cartCount > 0 && (
                 <span className="ml-1 w-4 h-4 rounded-full bg-[var(--gold-mid)] text-[var(--background)] text-xs font-bold flex items-center justify-center">
                   {cartCount}

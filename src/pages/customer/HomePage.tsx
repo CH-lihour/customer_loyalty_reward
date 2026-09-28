@@ -1,13 +1,16 @@
-import type { Tier } from "../../data/mockData";
+﻿import type { Tier } from "../../data/mockData";
 import { useShop } from "../../data/shop";
 import { TierBadge } from "../../components/TierBadge";
+import { Icon } from "../../components/Icon";
 
 interface Props {
   onNav: (p: string) => void;
   onAddToCart: (productId: string) => void;
+  guest?: boolean;
+  onSignIn?: () => void;
 }
 
-export function HomePage({ onNav, onAddToCart }: Props) {
+export function HomePage({ onNav, onAddToCart, guest = false, onSignIn }: Props) {
   const {
     currentUser: CURRENT_USER,
     products,
@@ -32,6 +35,39 @@ export function HomePage({ onNav, onAddToCart }: Props) {
   const ptsToNext = nextConfig ? Math.max(0, nextConfig.min - qualifying) : 0;
 
   const featured = products.filter((p) => p.featured).slice(0, 4);
+
+  if (guest) return (
+    <div className="flex flex-col gap-8">
+      <section className="rounded-2xl bg-gradient-to-br from-[#272238] via-[#1c2230] to-[#111722] p-8 md:p-12">
+        <p className="mb-3 text-sm font-semibold text-[var(--gold-mid)]">Shop local · Earn more</p>
+        <h1 className="max-w-2xl font-display text-3xl font-semibold md:text-4xl">Discover Cambodian products and rewards</h1>
+        <p className="mt-4 max-w-xl text-sm leading-relaxed text-[var(--muted-foreground)]">Browse KhmerShop without an account. Sign in when you’re ready to place an order and earn loyalty points.</p>
+        <div className="mt-6 flex flex-wrap gap-3">
+          <button onClick={() => onNav("products")} className="rounded-lg bg-[var(--gold-mid)] px-5 py-2.5 text-sm font-semibold text-[var(--background)]">Shop products</button>
+          <button onClick={onSignIn} className="rounded-lg border border-[var(--gold-mid)]/40 px-5 py-2.5 text-sm font-semibold text-[var(--gold-mid)]">Sign in or register</button>
+        </div>
+      </section>
+      <section>
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="font-display text-xl font-semibold">Featured Products</h2>
+          <button onClick={() => onNav("products")} className="text-sm text-[var(--gold-mid)]">View all →</button>
+        </div>
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          {featured.map((product) => (
+            <article key={product.id} className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)]">
+              <img src={product.image} alt={product.name} className="h-36 w-full object-cover" />
+              <div className="p-3">
+                <h3 className="text-sm font-medium">{product.name}</h3>
+                <p className="text-xs text-[var(--muted-foreground)]">{product.nameKh}</p>
+                <div className="mt-3 flex items-center justify-between gap-2"><strong className="text-[var(--gold-mid)]">{money(product.price)}</strong><span className="text-xs text-[var(--muted-foreground)]">+{product.normalPoints} pts</span></div>
+                <button onClick={() => onAddToCart(product.id)} disabled={product.stock < 1} className="mt-3 w-full rounded-lg bg-[var(--gold-mid)] py-2 text-xs font-semibold text-[var(--background)] disabled:opacity-40">{product.stock < 1 ? "Sold Out" : "Sign in to add"}</button>
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
+    </div>
+  );
 
   return (
     <div className="flex flex-col gap-8">
@@ -121,7 +157,7 @@ export function HomePage({ onNav, onAddToCart }: Props) {
           {
             label: "Points Balance",
             value: CURRENT_USER.points.toLocaleString(),
-            icon: "⭐",
+            icon: "star",
             sub: "available to redeem",
             onClick: () => onNav("points"),
           },
@@ -136,21 +172,21 @@ export function HomePage({ onNav, onAddToCart }: Props) {
                   tierConfig[r.minTier].min <= tierConfig[tier].min,
               )
               .length.toString(),
-            icon: "🎁",
+            icon: "gift",
             sub: "based on your tier",
             onClick: () => onNav("rewards"),
           },
           {
             label: "Badges Earned",
             value: CURRENT_USER.badges.length.toString(),
-            icon: "🏅",
+            icon: "medal",
             sub: "keep collecting!",
             onClick: () => onNav("badges"),
           },
           {
             label: "Referral Bonus",
             value: "100 pts",
-            icon: "🤝",
+            icon: "users",
             sub: "per successful referral",
             onClick: () => onNav("referrals"),
           },
@@ -160,7 +196,7 @@ export function HomePage({ onNav, onAddToCart }: Props) {
             onClick={stat.onClick}
             className="text-left p-4 rounded-xl bg-[var(--card)] border border-[var(--border)] card-glow transition-all hover:border-[var(--gold-mid)]/30"
           >
-            <div className="text-2xl mb-2">{stat.icon}</div>
+            <Icon name={stat.icon} className="mb-2 h-6 w-6 text-[var(--gold-mid)]" />
             <div className="font-mono-data text-lg font-semibold text-[var(--gold-mid)]">
               {stat.value}
             </div>
@@ -264,43 +300,43 @@ export function HomePage({ onNav, onAddToCart }: Props) {
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
           {tier === "Silver" &&
             [
-              { icon: "⭐", text: "1× points on all purchases" },
-              { icon: "🎁", text: "Basic reward catalog access" },
-              { icon: "🛒", text: "Standard checkout perks" },
+              { icon: "star", text: "1× points on all purchases" },
+              { icon: "gift", text: "Basic reward catalog access" },
+              { icon: "cart", text: "Standard checkout perks" },
             ].map((b) => (
               <div
                 key={b.text}
                 className="flex items-center gap-2 text-[var(--muted-foreground)]"
               >
-                <span>{b.icon}</span>
+                <Icon name={b.icon} className="h-4 w-4 shrink-0 text-[var(--gold-mid)]" />
                 {b.text}
               </div>
             ))}
           {tier === "Gold" &&
             [
-              { icon: "⭐", text: "1.5× points on all purchases" },
-              { icon: "🎁", text: "Gold reward catalog access" },
-              { icon: "🏷", text: "Gold-exclusive promotions" },
+              { icon: "star", text: "1.5× points on all purchases" },
+              { icon: "gift", text: "Gold reward catalog access" },
+              { icon: "tag", text: "Gold-exclusive promotions" },
             ].map((b) => (
               <div
                 key={b.text}
                 className="flex items-center gap-2 text-[var(--muted-foreground)]"
               >
-                <span>{b.icon}</span>
+                <Icon name={b.icon} className="h-4 w-4 shrink-0 text-[var(--gold-mid)]" />
                 {b.text}
               </div>
             ))}
           {tier === "Platinum" &&
             [
-              { icon: "⭐", text: "2× points on all purchases" },
-              { icon: "💎", text: "Platinum-exclusive rewards" },
-              { icon: "🚀", text: "Priority support & promotions" },
+              { icon: "star", text: "2× points on all purchases" },
+              { icon: "gem", text: "Platinum-exclusive rewards" },
+              { icon: "rocket", text: "Priority support & promotions" },
             ].map((b) => (
               <div
                 key={b.text}
                 className="flex items-center gap-2 text-[var(--muted-foreground)]"
               >
-                <span>{b.icon}</span>
+                <Icon name={b.icon} className="h-4 w-4 shrink-0 text-[var(--gold-mid)]" />
                 {b.text}
               </div>
             ))}

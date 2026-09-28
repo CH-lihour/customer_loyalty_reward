@@ -1,13 +1,14 @@
 import { useState } from "react";
 import { useShop } from "../../data/shop";
 import { useFeedback } from "../../components/FeedbackProvider";
+import { Icon } from "../../components/Icon";
 
-export function CartPage({ onNav }: { onNav: (page: string) => void }) {
+export function CartPage({ onNav, guest = false, onSignIn }: { onNav: (page: string) => void; guest?: boolean; onSignIn?: () => void }) {
   const shop = useShop();
   const { notify } = useFeedback();
   const [checkingOut, setCheckingOut] = useState(false);
   const [address, setAddress] = useState("");
-  const [phone, setPhone] = useState(shop.currentUser.phone);
+  const [phone, setPhone] = useState(guest ? "" : shop.currentUser.phone);
   const [error, setError] = useState("");
   const items = shop.cart
     .map((item) => ({
@@ -19,7 +20,7 @@ export function CartPage({ onNav }: { onNav: (page: string) => void }) {
     (sum, item) => sum + item.product!.price * item.qty,
     0,
   );
-  const multiplier = shop.tiers[shop.currentUser.tier].multiplier;
+  const multiplier = guest ? 1 : shop.tiers[shop.currentUser.tier].multiplier;
   const today = new Date().toISOString().slice(0, 10);
   const campaignMultiplier = Math.max(
     1,
@@ -60,7 +61,7 @@ export function CartPage({ onNav }: { onNav: (page: string) => void }) {
   if (!items.length)
     return (
       <div className="text-center py-24 space-y-4">
-        <div className="text-5xl">🛒</div>
+        <Icon name="cart" className="mx-auto h-12 w-12 text-[var(--gold-mid)]" />
         <h1 className="font-display text-2xl">Your cart is empty</h1>
         <button
           onClick={() => onNav("products")}
@@ -127,7 +128,11 @@ export function CartPage({ onNav }: { onNav: (page: string) => void }) {
           <span>Points after order completion</span>
           <strong>+{points}</strong>
         </div>
-        {!checkingOut ? (
+        {guest ? (
+          <button onClick={onSignIn} className="w-full rounded-lg bg-[var(--gold-mid)] text-[var(--background)] py-3 font-semibold">
+            Sign in to checkout
+          </button>
+        ) : !checkingOut ? (
           <button
             onClick={() => setCheckingOut(true)}
             className="w-full rounded-lg bg-[var(--gold-mid)] text-[var(--background)] py-3 font-semibold"

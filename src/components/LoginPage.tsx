@@ -1,5 +1,6 @@
 ﻿import { useState, type FormEvent } from "react";
 import { useFeedback } from "./FeedbackProvider";
+import { Icon } from "./Icon";
 
 export type LoginRole = "customer" | "admin";
 export type Registration = {
@@ -15,6 +16,7 @@ interface Props {
   onRoleChange?: (role: LoginRole) => void;
   onLogin: (role: LoginRole, email: string, password: string) => string | null;
   onRegister: (fields: Registration) => string | null;
+  onBrowse: () => void;
 }
 
 const inputClass =
@@ -30,7 +32,7 @@ const provinces = [
   "Takeo",
 ];
 
-export function LoginPage({ initialRole = "customer", onRoleChange, onLogin, onRegister }: Props) {
+export function LoginPage({ initialRole = "customer", onRoleChange, onLogin, onRegister, onBrowse }: Props) {
   const { notify } = useFeedback();
   const [role, setRole] = useState<LoginRole>(initialRole);
   const [registering, setRegistering] = useState(false);
@@ -95,7 +97,7 @@ export function LoginPage({ initialRole = "customer", onRoleChange, onLogin, onR
         <aside className="relative flex flex-col justify-between overflow-hidden bg-gradient-to-br from-[#272238] via-[#1c2230] to-[#111722] p-7 sm:p-10">
           <div className="pointer-events-none absolute -right-20 -top-16 h-72 w-72 rounded-full bg-[var(--gold-mid)]/10 blur-3xl" />
           <div className="relative flex items-center gap-3">
-            <span className="text-3xl">🇰🇭</span>
+            <Icon name="shop" className="h-8 w-8 text-[var(--gold-mid)]" />
             <div>
               <div className="font-display text-2xl font-semibold text-[var(--gold-mid)]">
                 KhmerShop
@@ -324,6 +326,7 @@ export function LoginPage({ initialRole = "customer", onRoleChange, onLogin, onR
                 >
                   Fill demo credentials
                 </button>
+                {role === "admin" && <p className="text-center text-xs text-[var(--muted-foreground)]">Staff demo accounts use password admin1234.</p>}
                 {role === "customer" && (
                   <p className="pt-2 text-center text-sm text-[var(--muted-foreground)]">
                     New customer?{" "}
@@ -341,6 +344,9 @@ export function LoginPage({ initialRole = "customer", onRoleChange, onLogin, onR
                 )}
               </form>
             )}
+            <button type="button" onClick={onBrowse} className="mt-5 w-full py-2 text-sm text-[var(--gold-mid)] hover:underline">
+              Continue browsing the shop
+            </button>
           </div>
         </main>
       </div>

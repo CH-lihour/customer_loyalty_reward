@@ -26,6 +26,14 @@ import {
   type Tier,
 } from "./mockData";
 import { extraCustomers, extraProducts } from "./seedExtras";
+import {
+  adminPages,
+  defaultRolePermissions,
+  initialAdminUsers,
+  type AdminPage,
+  type AdminRole,
+  type AdminUser,
+} from "./adminAccess";
 
 export type CartItem = { productId: string; qty: number };
 export type Redemption = {
@@ -74,6 +82,9 @@ export type TierRule = {
   color: string;
 };
 type State = {
+  adminUsers: AdminUser[];
+  rolePermissions: Record<AdminRole, AdminPage[]>;
+  disabledCustomerIds: string[];
   customers: Customer[];
   products: Product[];
   orders: Order[];
@@ -94,6 +105,9 @@ type State = {
 };
 
 const initial: State = {
+  adminUsers: initialAdminUsers,
+  rolePermissions: defaultRolePermissions,
+  disabledCustomerIds: [],
   customers: [...customers, ...extraCustomers],
   products: [...products, ...extraProducts],
   orders,
@@ -123,6 +137,28 @@ const initial: State = {
   tierOverrides: {},
 };
 const key = "khmershop-frontend-v1";
+function restoreState(saved: string | null): State {
+  if (!saved) return initial;
+  try {
+    const parsed = JSON.parse(saved) as Partial<State>;
+    const tiers = { ...initial.tiers, ...parsed.tiers };
+    tiers.Platinum = { ...tiers.Platinum, max: Infinity };
+    return {
+      ...initial, ...parsed, tiers,
+      adminUsers: parsed.adminUsers?.length ? parsed.adminUsers : initial.adminUsers,
+      disabledCustomerIds: parsed.disabledCustomerIds ?? [],
+      rolePermissions: {
+        ...initial.rolePermissions,
+        ...parsed.rolePermissions,
+        marketing_manager: [...new Set([...(parsed.rolePermissions?.marketing_manager ?? initial.rolePermissions.marketing_manager), "profile" as AdminPage])],
+        loyalty_manager: [...new Set([...(parsed.rolePermissions?.loyalty_manager ?? initial.rolePermissions.loyalty_manager), "profile" as AdminPage])],
+        super_admin: adminPages,
+      },
+    };
+  } catch {
+    return initial;
+  }
+}
 const uid = () =>
   globalThis.crypto?.randomUUID?.() ??
   `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -210,6 +246,11 @@ const awardBadges = (s: State, userId: string): State => {
 };
 
 type Shop = State & {
+  saveAdminUser: (actorId: string, user: Omit<AdminUser, "id"> & { id?: string }) => string | null;
+  setAdminUserActive: (actorId: string, userId: string, active: boolean) => string | null;
+  setCustomerActive: (actorId: string, userId: string, active: boolean) => string | null;
+  saveRolePermissions: (actorId: string, role: AdminRole, pages: AdminPage[]) => string | null;
+  updateAdminProfile: (userId: string, fields: Pick<AdminUser, "name" | "email">) => string | null;
   currentUser: Customer;
   setCurrency: (currency: "USD" | "KHR") => void;
   money: (usd: number) => string;
@@ -248,23 +289,25 @@ type Shop = State & {
     referralCode: string;
   }) => { error?: string; userId?: string };
   selectCustomer: (id: string) => void;
-  recordLogin: (userId: string | null) => void;
+  recordLogin: (userId: string | null, adminUserId?: string) => void;
 };
 const ShopContext = createContext<Shop | null>(null);
 
 export function ShopProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<State>(() => {
     try {
-      const saved = localStorage.getItem(key);
-      if (!saved) return initial;
-      const parsed = JSON.parse(saved) as Partial<State>;
-      const tiers = { ...initial.tiers, ...parsed.tiers };
-      tiers.Platinum = { ...tiers.Platinum, max: Infinity };
-      return { ...initial, ...parsed, tiers };
+      return restoreState(localStorage.getItem(key));
     } catch {
       return initial;
     }
   });
+  useEffect(() => {
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === key && event.newValue) setState(restoreState(event.newValue));
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
   useEffect(() => {
     try {
       localStorage.setItem(key, JSON.stringify(state));
@@ -280,6 +323,79 @@ export function ShopProvider({ children }: { children: ReactNode }) {
     () => ({
       ...state,
       currentUser,
+      updateAdminProfile: (userId, fields) => {
+        const user = state.adminUsers.find((item) => item.id === userId && item.active);
+        if (!user) return "Admin account not found.";
+        const name = fields.name.trim();
+        const email = fields.email.trim().toLowerCase();
+        if (!name || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+          return "Enter a name and valid email address.";
+        if (state.adminUsers.some((item) => item.id !== userId && item.email.toLowerCase() === email))
+          return "An admin user already has that email address.";
+        setState((s) => ({
+          ...s,
+          adminUsers: s.adminUsers.map((item) => item.id === userId ? { ...item, name, email } : item),
+          logs: [{ id: uid(), userId, userName: name, event: "ADMIN_PROFILE_UPDATED", description: "Updated admin profile", timestamp: now().replace("T", " ").slice(0, 16) }, ...s.logs],
+        }));
+        return null;
+      },
+      saveAdminUser: (actorId, user) => {
+        const actor = state.adminUsers.find((item) => item.id === actorId && item.active);
+        if (actor?.role !== "super_admin") return "Only Super Admin can manage users.";
+        const name = user.name.trim();
+        const email = user.email.trim().toLowerCase();
+        if (!name || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+          return "Enter a name and valid email address.";
+        if (!["super_admin", "marketing_manager", "loyalty_manager"].includes(user.role))
+          return "Choose a valid staff role.";
+        if (state.adminUsers.some((item) => item.email.toLowerCase() === email && item.id !== user.id))
+          return "An admin user already has that email address.";
+        const existing = state.adminUsers.find((item) => item.id === user.id);
+        if (existing?.id === "admin-super" && (user.role !== "super_admin" || !user.active))
+          return "The primary Super Admin must stay active.";
+        const saved: AdminUser = { id: user.id || uid(), name, email, role: user.role, active: user.active };
+        setState((s) => ({
+          ...s,
+          adminUsers: existing
+            ? s.adminUsers.map((item) => item.id === saved.id ? saved : item)
+            : [...s.adminUsers, saved],
+          logs: [{ id: uid(), userId: actor.id, userName: actor.name, event: existing ? "ADMIN_USER_UPDATED" : "ADMIN_USER_CREATED", description: `${existing ? "Updated" : "Created"} staff user ${saved.email} (${saved.role})`, timestamp: now().replace("T", " ").slice(0, 16) }, ...s.logs],
+        }));
+        return null;
+      },
+      setAdminUserActive: (actorId, userId, active) => {
+        const actor = state.adminUsers.find((item) => item.id === actorId && item.active);
+        if (actor?.role !== "super_admin") return "Only Super Admin can manage users.";
+        if (userId === "admin-super" && !active) return "The primary Super Admin must stay active.";
+        if (userId === actorId && !active) return "You cannot disable your own account.";
+        if (!state.adminUsers.some((item) => item.id === userId)) return "User not found.";
+        setState((s) => ({ ...s, adminUsers: s.adminUsers.map((item) => item.id === userId ? { ...item, active } : item), logs: [{ id: uid(), userId: actor.id, userName: actor.name, event: "ADMIN_USER_STATUS", description: `${active ? "Enabled" : "Disabled"} staff user ${userId}`, timestamp: now().replace("T", " ").slice(0, 16) }, ...s.logs] }));
+        return null;
+      },
+      setCustomerActive: (actorId, userId, active) => {
+        const actor = state.adminUsers.find((item) => item.id === actorId && item.active);
+        if (actor?.role !== "super_admin") return "Only Super Admin can manage users.";
+        const customer = state.customers.find((item) => item.id === userId);
+        if (!customer) return "Customer not found.";
+        setState((s) => ({
+          ...s,
+          disabledCustomerIds: active
+            ? s.disabledCustomerIds.filter((id) => id !== userId)
+            : [...new Set([...s.disabledCustomerIds, userId])],
+          logs: [{ id: uid(), userId: actor.id, userName: actor.name, event: "CUSTOMER_STATUS", description: `${active ? "Enabled" : "Disabled"} customer ${customer.email}`, timestamp: now().replace("T", " ").slice(0, 16) }, ...s.logs],
+        }));
+        return null;
+      },
+      saveRolePermissions: (actorId, role, pages) => {
+        const actor = state.adminUsers.find((item) => item.id === actorId && item.active);
+        if (actor?.role !== "super_admin") return "Only Super Admin can change permissions.";
+        if (role === "super_admin") return "Super Admin always has full access.";
+        const allowed = adminPages.filter((page) => page !== "users" && page !== "roles" && page !== "profile" && pages.includes(page));
+        if (!allowed.length) return "Select at least one section for this role.";
+        allowed.push("profile");
+        setState((s) => ({ ...s, rolePermissions: { ...s.rolePermissions, [role]: allowed }, logs: [{ id: uid(), userId: actor.id, userName: actor.name, event: "ROLE_PERMISSIONS_UPDATED", description: `Updated ${role} permissions: ${allowed.join(", ")}`, timestamp: now().replace("T", " ").slice(0, 16) }, ...s.logs] }));
+        return null;
+      },
       setCurrency: (currency) => setState((s) => ({ ...s, currency })),
       money: (usd) =>
         state.currency === "KHR"
@@ -831,10 +947,11 @@ export function ShopProvider({ children }: { children: ReactNode }) {
             ? { ...s, currentUserId: id, cart: [] }
             : s,
         ),
-      recordLogin: (userId) => setState((s) => {
+      recordLogin: (userId, adminUserId) => setState((s) => {
         const user = userId ? s.customers.find((customer) => customer.id === userId) : null;
+        const admin = adminUserId ? s.adminUsers.find((item) => item.id === adminUserId) : null;
         const entry: LogEntry = {
-          id: uid(), userId: user?.id ?? "admin", userName: user?.name ?? "Demo Admin",
+          id: uid(), userId: user?.id ?? admin?.id ?? "admin", userName: user?.name ?? admin?.name ?? "Demo Admin",
           event: "USER_LOGIN", description: user ? "Customer signed in" : "Admin signed in",
           timestamp: now().replace("T", " ").slice(0, 16),
         };

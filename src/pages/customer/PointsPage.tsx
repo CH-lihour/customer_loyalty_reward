@@ -1,5 +1,6 @@
-import { useShop } from "../../data/shop";
+﻿import { useShop } from "../../data/shop";
 import type { Tier } from "../../data/mockData";
+import { Icon } from "../../components/Icon";
 
 const typeColors: Record<string, string> = {
   EARN: "text-green-400",
@@ -12,7 +13,7 @@ const typeIcons: Record<string, string> = {
   EARN: "↑",
   SPEND: "↓",
   ADJUST: "⟳",
-  REFERRAL: "🤝",
+  REFERRAL: "users",
 };
 
 export function PointsPage() {
@@ -115,7 +116,7 @@ export function PointsPage() {
         )}
         {!nextTier && (
           <div className="relative mt-4 text-sm text-[var(--gold-light)] font-semibold">
-            🏆 You've reached the highest tier!
+            <Icon name="trophy" className="mr-2 inline h-4 w-4" /> You've reached the highest tier!
           </div>
         )}
       </div>
@@ -126,22 +127,22 @@ export function PointsPage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
           {[
             {
-              icon: "🛒",
+              icon: "cart",
               label: "$1 spent = 1 base point",
               note: `× ${config.multiplier} with your ${tier} tier`,
             },
             {
-              icon: "🏷",
+              icon: "tag",
               label: "Bonus products",
               note: "Up to 3× on selected items",
             },
             {
-              icon: "🤝",
+              icon: "users",
               label: "Refer a friend",
               note: "+100 pts when they complete first order",
             },
             {
-              icon: "📅",
+              icon: "calendar",
               label: "Weekend campaign",
               note: "2× points (when active)",
             },
@@ -150,7 +151,7 @@ export function PointsPage() {
               key={e.label}
               className="flex gap-3 p-3 rounded-lg bg-[var(--secondary)]"
             >
-              <span className="text-xl">{e.icon}</span>
+              <Icon name={e.icon} className="h-5 w-5 shrink-0 text-[var(--gold-mid)]" />
               <div>
                 <div className="font-medium">{e.label}</div>
                 <div className="text-xs text-[var(--muted-foreground)]">
@@ -174,7 +175,7 @@ export function PointsPage() {
               <div
                 className={`w-9 h-9 rounded-full flex items-center justify-center font-bold text-lg shrink-0 ${typeColors[tx.type]} bg-current/10`}
               >
-                <span>{typeIcons[tx.type]}</span>
+                <Icon name={typeIcons[tx.type]} className="h-4 w-4" />
               </div>
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-medium truncate">{tx.reason}</div>

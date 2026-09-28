@@ -1,6 +1,7 @@
-import { useAnalytics } from "../../data/analytics";
+﻿import { useAnalytics } from "../../data/analytics";
 import { useShop } from "../../data/shop";
 import { TierBadge } from "../../components/TierBadge";
+import { Icon } from "../../components/Icon";
 
 const riskIndicator = (lastOrder: string) => {
   const days = Math.floor(
@@ -72,39 +73,39 @@ export function AdminAnalyticsPage() {
           {
             label: "Points Issued",
             value: analytics.totalPointsIssued.toLocaleString(),
-            icon: "⭐",
+            icon: "star",
           },
           {
             label: "Points Redeemed",
             value: analytics.totalPointsRedeemed.toLocaleString(),
-            icon: "💰",
+            icon: "wallet",
           },
           {
             label: "Redemption Rate",
             value: `${analytics.totalPointsIssued ? Math.round((analytics.totalPointsRedeemed / analytics.totalPointsIssued) * 100) : 0}%`,
-            icon: "📊",
+            icon: "chart",
           },
           {
             label: "Rewards Redeemed",
             value: analytics.totalRewardsRedeemed,
-            icon: "🎁",
+            icon: "gift",
           },
           {
             label: "Referral Conversions",
             value: analytics.referralConversions,
-            icon: "🤝",
+            icon: "users",
           },
           {
             label: "Completed Orders",
             value: analytics.completedOrders,
-            icon: "📦",
+            icon: "orders",
           },
         ].map((s) => (
           <div
             key={s.label}
             className="bg-[var(--card)] rounded-xl p-4 border border-[var(--border)]"
           >
-            <div className="text-xl mb-1">{s.icon}</div>
+            <Icon name={s.icon} className="mb-1 h-6 w-6 text-[var(--gold-mid)]" />
             <div className="font-mono-data text-xl font-bold text-[var(--gold-mid)]">
               {s.value}
             </div>

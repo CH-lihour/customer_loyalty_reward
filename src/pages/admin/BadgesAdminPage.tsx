@@ -1,15 +1,16 @@
-import { useState, type FormEvent } from "react"
+﻿import { useState, type FormEvent } from "react"
 import { type Badge } from "../../data/mockData"
 import { useShop } from "../../data/shop"
 import { useFeedback } from "../../components/FeedbackProvider"
 import { AdminModal } from "../../components/AdminModal"
+import { Icon, iconName } from "../../components/Icon"
 const blank = (): Badge => ({
   id: "",
   code: "",
   name: "",
   nameKh: "",
   description: "",
-  icon: "ðŸ…",
+  icon: "medal",
   color: "#e8a634",
   metric: "orders",
   threshold: 1,
@@ -99,11 +100,17 @@ export function AdminBadgesPage() {
               </label>
               <label className="text-xs">
                 Icon
-                <input
+                <select
                   className={field}
-                  value={editing.icon}
+                  value={iconName(editing.icon)}
                   onChange={(e) => change("icon", e.target.value)}
-                />
+                >
+                  {[
+                    ["medal", "Medal"], ["star", "Star"], ["trophy", "Trophy"],
+                    ["gift", "Gift"], ["cart", "Cart"], ["heart", "Heart"],
+                    ["gem", "Gem"], ["users", "Referrals"], ["rocket", "Rocket"],
+                  ].map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                </select>
               </label>
               <label className="text-xs">
                 Condition
@@ -169,7 +176,7 @@ export function AdminBadgesPage() {
             className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-5"
           >
             <div className="flex gap-4">
-              <span className="text-4xl">{b.icon}</span>
+              <Icon name={b.icon} className="h-10 w-10 shrink-0 text-[var(--gold-mid)]" />
               <div className="flex-1">
                 <strong>{b.name}</strong>
                 <p className="text-xs text-[var(--muted-foreground)]">

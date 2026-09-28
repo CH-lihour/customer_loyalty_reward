@@ -1,6 +1,7 @@
-import { useAnalytics } from "../../data/analytics";
+﻿import { useAnalytics } from "../../data/analytics";
 import { useShop } from "../../data/shop";
 import { TierBadge } from "../../components/TierBadge";
+import { Icon } from "../../components/Icon";
 
 export function AdminDashboardPage() {
   const analytics = useAnalytics();
@@ -9,37 +10,37 @@ export function AdminDashboardPage() {
     {
       label: "Total Customers",
       value: analytics.totalCustomers,
-      icon: "👥",
+      icon: "users",
       sub: `${analytics.activeCustomers} active`,
     },
     {
       label: "Total Orders",
       value: analytics.totalOrders,
-      icon: "📦",
+      icon: "orders",
       sub: `${analytics.completedOrders} completed`,
     },
     {
       label: "Points Issued",
       value: analytics.totalPointsIssued.toLocaleString(),
-      icon: "⭐",
+      icon: "star",
       sub: `${analytics.totalPointsRedeemed.toLocaleString()} redeemed`,
     },
     {
       label: "Rewards Redeemed",
       value: analytics.totalRewardsRedeemed,
-      icon: "🎁",
+      icon: "gift",
       sub: "total redemptions",
     },
     {
       label: "Referral Conversions",
       value: analytics.referralConversions,
-      icon: "🤝",
+      icon: "users",
       sub: "successful referrals",
     },
     {
       label: "Repeat Customers",
       value: analytics.repeatCustomers,
-      icon: "🔁",
+      icon: "repeat",
       sub: `${analytics.oneTimeCustomers} one-time`,
     },
   ];
@@ -69,7 +70,7 @@ export function AdminDashboardPage() {
             className="bg-[var(--card)] rounded-xl p-4 border border-[var(--border)]"
           >
             <div className="flex items-start justify-between mb-2">
-              <div className="text-xl">{s.icon}</div>
+              <Icon name={s.icon} className="h-6 w-6 text-[var(--gold-mid)]" />
             </div>
             <div className="font-mono-data text-2xl font-bold text-[var(--gold-mid)]">
               {s.value}

@@ -1,4 +1,4 @@
-export type Tier = "Silver" | "Gold" | "Platinum";
+﻿export type Tier = "Silver" | "Gold" | "Platinum";
 export type OrderStatus =
   | "PENDING"
   | "CONFIRMED"
@@ -732,7 +732,7 @@ export const badges: Badge[] = [
     name: "First Purchase",
     nameKh: "ការទិញលើកដំបូង",
     description: "Complete your first order",
-    icon: "🛒",
+    icon: "cart",
     color: "#3b82f6",
   },
   {
@@ -741,7 +741,7 @@ export const badges: Badge[] = [
     name: "Loyal Customer",
     nameKh: "អតិថិជនស្មោះ",
     description: "Active for 6+ months",
-    icon: "💛",
+    icon: "heart",
     color: "#f59e0b",
   },
   {
@@ -750,7 +750,7 @@ export const badges: Badge[] = [
     name: "Big Spender",
     nameKh: "ចំណាយច្រើន",
     description: "Spend over $500 total",
-    icon: "💎",
+    icon: "gem",
     color: "#8b5cf6",
   },
   {
@@ -759,7 +759,7 @@ export const badges: Badge[] = [
     name: "5 Orders",
     nameKh: "ការបញ្ជាទិញ ៥",
     description: "Complete 5 orders",
-    icon: "🌟",
+    icon: "star",
     color: "#10b981",
   },
   {
@@ -768,7 +768,7 @@ export const badges: Badge[] = [
     name: "10 Orders",
     nameKh: "ការបញ្ជាទិញ ១០",
     description: "Complete 10 orders",
-    icon: "🏆",
+    icon: "trophy",
     color: "#f59e0b",
   },
   {
@@ -777,7 +777,7 @@ export const badges: Badge[] = [
     name: "Referral Champion",
     nameKh: "ជើងឯកណែនាំ",
     description: "Successfully refer 5 friends",
-    icon: "🤝",
+    icon: "users",
     color: "#ec4899",
   },
   {
@@ -786,7 +786,7 @@ export const badges: Badge[] = [
     name: "Point Collector",
     nameKh: "អ្នករក​ Point",
     description: "Earn 1,000+ loyalty points",
-    icon: "⭐",
+    icon: "star",
     color: "#f59e0b",
   },
 ];
@@ -843,7 +843,7 @@ export const activityLog = [
     userId: "u7",
     userName: "Chanthy Ros",
     event: "BADGE_AWARDED",
-    description: "Earned badge: 10 Orders 🏆",
+    description: "Earned badge: 10 Orders",
     timestamp: "2026-09-12 08:55",
   },
   {

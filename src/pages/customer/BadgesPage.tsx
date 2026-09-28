@@ -1,4 +1,5 @@
 import { useShop } from "../../data/shop";
+import { Icon } from "../../components/Icon";
 
 export function BadgesPage() {
   const { badges, currentUser: CURRENT_USER } = useShop();
@@ -41,8 +42,8 @@ export function BadgesPage() {
               key={badge.id}
               className={`p-5 rounded-xl border text-center transition-all ${isEarned ? "bg-[var(--card)] border-[var(--border)] card-glow" : "bg-[var(--card)]/40 border-[var(--border)]/40 opacity-50"}`}
             >
-              <div className="text-5xl mb-3">
-                {isEarned ? badge.icon : "🔒"}
+              <div className="mb-3 flex justify-center">
+                <Icon name={isEarned ? badge.icon : "lock"} className="h-10 w-10 text-[var(--gold-mid)]" />
               </div>
               <div className="font-semibold text-sm">{badge.name}</div>
               <div className="text-xs text-[var(--muted-foreground)] mt-0.5">
