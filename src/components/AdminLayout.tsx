@@ -22,6 +22,7 @@ const navItems: {
   { id: "badges", label: "Badges", icon: "medal", group: "Loyalty" },
   { id: "referrals", label: "Referrals", icon: "users", group: "Loyalty" },
   { id: "logs", label: "Activity Logs", icon: "list", group: "System" },
+  { id: "exchange-rate", label: "Exchange Rate", icon: "wallet", group: "System" },
   { id: "users", label: "User Management", icon: "users", group: "System" },
   { id: "roles", label: "Role Permissions", icon: "lock", group: "System" },
   { id: "profile", label: "My Profile", icon: "user", group: "Account" },

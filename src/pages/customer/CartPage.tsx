@@ -72,7 +72,7 @@ export function CartPage({ onNav, guest = false, onSignIn }: { onNav: (page: str
       </div>
     );
   return (
-    <div className="mx-auto w-full max-w-3xl space-y-5">
+    <div className="w-full space-y-5">
       <h1 className="font-display text-2xl font-semibold">Your Cart</h1>
       {items.map(({ product, productId, qty }) => (
         <div
@@ -110,11 +110,13 @@ export function CartPage({ onNav, guest = false, onSignIn }: { onNav: (page: str
           </div>
           <strong>{shop.money(product!.price * qty)}</strong>
           <button
+            type="button"
             aria-label={`Remove ${product!.name}`}
+            title={`Remove ${product!.name}`}
             onClick={() => setQty(productId, 0)}
-            className="text-red-400"
+            className="grid h-9 w-9 place-items-center rounded-lg text-red-400 hover:bg-red-400/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-400"
           >
-            Remove
+            <Icon name="trash" className="h-5 w-5" />
           </button>
         </div>
       ))}

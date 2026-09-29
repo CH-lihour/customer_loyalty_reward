@@ -20,7 +20,7 @@ export function ReferralsPage() {
     }
   };
   return (
-    <div className="max-w-3xl space-y-6">
+    <div className="w-full space-y-6">
       <h1 className="font-display text-2xl font-semibold">Referral Program</h1>
       <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-6">
         <h2 className="mb-2 text-xl font-semibold">

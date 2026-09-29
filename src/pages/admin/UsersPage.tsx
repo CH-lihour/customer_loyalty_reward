@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { AdminModal } from "../../components/AdminModal";
+import { ActionIconButton } from "../../components/ActionIconButton";
 import { useFeedback } from "../../components/FeedbackProvider";
 import { useShop } from "../../data/shop";
 import { adminRoleLabels, type AdminRole, type AdminUser } from "../../data/adminAccess";
@@ -59,7 +60,7 @@ export function AdminUsersPage({ actorId }: { actorId: string }) {
           <td className="px-4 py-3">{adminRoleLabels[user.role]}</td>
           <td className="px-4 py-3"><span className={user.active ? "text-green-400" : "text-[var(--muted-foreground)]"}>{user.active ? "Active" : "Disabled"}</span></td>
           <td className="px-4 py-3 text-right"><div className="flex justify-end gap-2">
-            <button onClick={() => open(user)} className="rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs">Edit</button>
+            <ActionIconButton action="edit" label={`Edit ${user.name}`} onClick={() => open(user)} />
             <button onClick={() => toggle(user)} disabled={user.id === "admin-super" || user.id === actorId} className="rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs disabled:opacity-40">{user.active ? "Disable" : "Enable"}</button>
           </div></td>
         </tr>)}</tbody>

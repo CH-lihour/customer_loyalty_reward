@@ -70,12 +70,12 @@ export function CustomerLayout({
           </button>
 
           {/* Desktop nav */}
-          <nav className="hidden lg:flex items-center gap-1">
+          <nav className="hidden 2xl:flex items-center gap-1">
             {navItems.filter((item) => !guest || ["home", "products", "cart"].includes(item.id)).map((item) => (
               <button
                 key={item.id}
                 onClick={() => onNav(item.id)}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors relative ${page === item.id ? "nav-link-active" : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"}`}
+                className={`relative w-24 shrink-0 rounded-lg px-2 py-1.5 text-center text-sm font-medium transition-colors ${page === item.id ? "nav-link-active" : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"}`}
               >
                 {item.label}
                 {item.id === "cart" && cartCount > 0 && (
@@ -89,7 +89,7 @@ export function CustomerLayout({
 
           <div className="flex items-center gap-3 shrink-0">
             <button
-              title="Illustrative KHR rate: 1 USD = 4,000 KHR"
+              title={`Current rate: 1 USD = ${shop.exchangeRate.toLocaleString()} KHR`}
               onClick={() =>
                 shop.setCurrency(shop.currency === "USD" ? "KHR" : "USD")
               }
@@ -100,7 +100,7 @@ export function CustomerLayout({
             <button
               onClick={() => onNav("cart")}
               aria-label="Cart"
-              className="relative lg:hidden p-2 rounded-lg hover:bg-[var(--secondary)] transition-colors text-[var(--muted-foreground)]"
+              className="relative 2xl:hidden p-2 rounded-lg hover:bg-[var(--secondary)] transition-colors text-[var(--muted-foreground)]"
             >
               <Icon name="cart" />
               {cartCount > 0 && (
@@ -124,13 +124,13 @@ export function CustomerLayout({
       </header>
 
       {/* Mobile nav */}
-      <div className="lg:hidden sticky top-14 z-40 bg-[var(--card)] border-b border-[var(--border)] overflow-x-auto">
+      <div className="2xl:hidden sticky top-14 z-40 bg-[var(--card)] border-b border-[var(--border)] overflow-x-auto">
         <div className="flex min-w-max px-2 py-1.5 gap-1">
           {navItems.filter((item) => !guest || ["home", "products", "cart"].includes(item.id)).map((item) => (
             <button
               key={item.id}
               onClick={() => onNav(item.id)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-colors relative ${page === item.id ? "nav-link-active" : "text-[var(--muted-foreground)]"}`}
+              className={`relative flex w-24 shrink-0 items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-medium whitespace-nowrap transition-colors ${page === item.id ? "nav-link-active" : "text-[var(--muted-foreground)]"}`}
             >
               <Icon name={item.icon} className="h-4 w-4" /> {item.label}
               {item.id === "cart" && cartCount > 0 && (
@@ -145,7 +145,7 @@ export function CustomerLayout({
 
       <main
         key={page}
-        className="animate-page-enter flex-1 max-w-7xl w-full mx-auto px-4 py-6"
+        className="animate-page-enter min-w-0 flex-1 max-w-7xl w-full mx-auto px-4 py-6"
       >
         {children}
       </main>

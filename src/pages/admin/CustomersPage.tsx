@@ -4,6 +4,7 @@ import { useFeedback } from "../../components/FeedbackProvider"
 import type { Tier } from "../../data/mockData"
 import { TierBadge } from "../../components/TierBadge"
 import { AdminModal } from "../../components/AdminModal"
+import { ActionIconButton } from "../../components/ActionIconButton"
 
 const riskLabel = (lastOrder: string) => {
   const days = Math.floor(
@@ -134,12 +135,10 @@ export function AdminCustomersPage() {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <button
-                        onClick={() => openTierEditor(c.id)}
-                        className="rounded bg-[var(--secondary)] px-2 py-1 text-xs text-[var(--gold-mid)]"
-                      >
-                        {tierOverrides[c.id] ?? "Auto"} · Edit
-                      </button>
+                      <div className="flex items-center justify-end gap-2">
+                        <span className="text-xs text-[var(--muted-foreground)]">{tierOverrides[c.id] ?? "Auto"}</span>
+                        <ActionIconButton action="edit" label={`Edit ${c.name}'s tier`} onClick={() => openTierEditor(c.id)} />
+                      </div>
                     </td>
                   </tr>
                 )

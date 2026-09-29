@@ -1,7 +1,7 @@
 export type AdminPage =
   | "dashboard" | "analytics" | "customers" | "products" | "orders"
   | "points" | "tiers" | "campaigns" | "rewards" | "badges"
-  | "referrals" | "logs" | "users" | "roles" | "profile";
+  | "referrals" | "logs" | "exchange-rate" | "users" | "roles" | "profile";
 
 export type AdminRole = "super_admin" | "marketing_manager" | "loyalty_manager";
 
@@ -17,7 +17,8 @@ export const adminPageLabels: Record<AdminPage, string> = {
   dashboard: "Dashboard", analytics: "Analytics", customers: "Customers",
   products: "Products", orders: "Orders", points: "Points", tiers: "Tiers",
   campaigns: "Campaigns", rewards: "Rewards", badges: "Badges",
-  referrals: "Referrals", logs: "Activity Logs", users: "User Management",
+  referrals: "Referrals", logs: "Activity Logs", "exchange-rate": "Exchange Rate",
+  users: "User Management",
   roles: "Role Permissions", profile: "My Profile",
 };
 

@@ -2,6 +2,7 @@
 import { useShop, type Campaign } from "../../data/shop"
 import { useFeedback } from "../../components/FeedbackProvider"
 import { AdminModal } from "../../components/AdminModal"
+import { ActionIconButton } from "../../components/ActionIconButton"
 const blank = (): Campaign => ({
   id: "",
   name: "",
@@ -163,13 +164,8 @@ export function AdminCampaignsPage() {
                       : "Inactive"}
                 </p>
               </div>
-              <div className="flex gap-3 text-sm">
-                <button
-                  onClick={() => setEditing(c)}
-                  className="text-[var(--gold-mid)]"
-                >
-                  Edit
-                </button>
+              <div className="flex items-center gap-2 text-sm">
+                <ActionIconButton action="edit" label={`Edit ${c.name}`} onClick={() => setEditing(c)} />
                 <button
                   onClick={() => {
                     saveCampaign({ ...c, active: !c.active })
@@ -181,7 +177,9 @@ export function AdminCampaignsPage() {
                 >
                   {c.active ? "Deactivate" : "Activate"}
                 </button>
-                <button
+                <ActionIconButton
+                  action="delete"
+                  label={`Delete ${c.name}`}
                   onClick={() => {
                     void confirm(`Delete ${c.name}?`).then((ok) => {
                       if (ok) {
@@ -190,10 +188,7 @@ export function AdminCampaignsPage() {
                       }
                     })
                   }}
-                  className="text-red-400"
-                >
-                  Delete
-                </button>
+                />
               </div>
             </div>
           ))

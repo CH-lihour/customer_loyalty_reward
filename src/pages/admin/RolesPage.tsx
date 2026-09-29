@@ -11,7 +11,7 @@ export function AdminRolesPage({ actorId }: { actorId: string }) {
   const [role, setRole] = useState<AdminRole>("marketing_manager");
   const [draft, setDraft] = useState<Partial<Record<AdminRole, AdminPage[]>>>({});
   const selected = draft[role] ?? rolePermissions[role];
-  const sections = adminPages.filter((page) => page !== "users" && page !== "roles" && page !== "profile");
+  const sections = adminPages.filter((page) => page !== "users" && page !== "roles" && page !== "profile" && page !== "exchange-rate");
   const toggle = (page: AdminPage) => setDraft((current) => ({
     ...current,
     [role]: selected.includes(page) ? selected.filter((item) => item !== page) : [...selected, page],
@@ -38,6 +38,6 @@ export function AdminRolesPage({ actorId }: { actorId: string }) {
       </div>
       <button onClick={save} className="mt-5 rounded-lg bg-[var(--gold-mid)] px-4 py-2 font-semibold text-[var(--background)]">Save permissions</button>
     </div>
-    <p className="text-xs text-[var(--muted-foreground)]">Every staff role can access My Profile. Super Admin always has access to every section, including User Management and Role Permissions.</p>
+    <p className="text-xs text-[var(--muted-foreground)]">Every staff role can access My Profile. Super Admin always has access to every section, including Exchange Rate, User Management, and Role Permissions.</p>
   </div>;
 }

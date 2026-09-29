@@ -7,6 +7,7 @@ import {
   type Registration,
 } from "./components/LoginPage";
 import { CustomerLayout } from "./components/CustomerLayout";
+import { AddToCartDialog } from "./components/AddToCartDialog";
 import { AdminLayout, type AdminPage } from "./components/AdminLayout";
 import { adminPages } from "./data/adminAccess";
 
@@ -35,6 +36,7 @@ import { AdminActivityLogsPage } from "./pages/admin/ActivityLogsPage";
 import { AdminAnalyticsPage } from "./pages/admin/AnalyticsPage";
 import { AdminUsersPage } from "./pages/admin/UsersPage";
 import { AdminRolesPage } from "./pages/admin/RolesPage";
+import { AdminExchangeRatePage } from "./pages/admin/ExchangeRatePage";
 import { AdminProfilePage } from "./pages/admin/ProfilePage";
 
 type CustomerPage =
@@ -116,6 +118,7 @@ function readSession(): Session | null {
 export default function App() {
   const [session, setSession] = useState<Session | null>(readSession);
   const [route, setRoute] = useState<Route>(readRoute);
+  const [pendingProductId, setPendingProductId] = useState<string | null>(null);
   const pendingRoute = useRef<Route | null>(null);
   const shop = useShop();
   const { notify } = useFeedback();
@@ -262,12 +265,27 @@ export default function App() {
       notify("This product is out of stock.", "error");
       return;
     }
-    shop.addToCart(productId);
-    notify(`${product.name} added to your cart.`, "success");
+    setPendingProductId(productId);
+  };
+
+  const confirmAddToCart = (qty: number) => {
+    const product = shop.products.find((p) => p.id === pendingProductId);
+    const inCart = shop.cart.find((item) => item.productId === pendingProductId)?.qty ?? 0;
+    if (!product || !Number.isInteger(qty) || qty < 1 || product.stock < inCart + qty) {
+      notify("The selected quantity is no longer available.", "error");
+      return;
+    }
+    shop.addToCart(product.id, qty);
+    setPendingProductId(null);
+    notify(`${qty} × ${product.name} added to your cart.`, "success");
     navigate({ role: "customer", page: "cart" });
   };
 
   const cartCount = shop.cart.reduce((s, c) => s + c.qty, 0);
+  const pendingProduct = shop.products.find((product) => product.id === pendingProductId);
+  const availableQty = pendingProduct
+    ? Math.max(0, pendingProduct.stock - (shop.cart.find((item) => item.productId === pendingProductId)?.qty ?? 0))
+    : 0;
   const customerPage = route.role === "customer" ? route.page : "home";
   const adminPage = route.role === "admin" ? route.page : allowedAdminPages[0];
   const navigateCustomer = (page: CustomerPage) => navigate({ role: "customer", page });
@@ -313,6 +331,7 @@ export default function App() {
         {adminPage === "analytics" && <AdminAnalyticsPage />}
         {adminPage === "users" && <AdminUsersPage actorId={adminUser.id} />}
         {adminPage === "roles" && <AdminRolesPage actorId={adminUser.id} />}
+        {adminPage === "exchange-rate" && <AdminExchangeRatePage actorId={adminUser.id} />}
         {adminPage === "profile" && <AdminProfilePage userId={adminUser.id} />}
       </AdminLayout>
     );
@@ -346,6 +365,15 @@ export default function App() {
       {customerPage === "badges" && <BadgesPage />}
       {customerPage === "referrals" && <ReferralsPage />}
       {customerPage === "profile" && <ProfilePage />}
+      {pendingProduct && (
+        <AddToCartDialog
+          product={pendingProduct}
+          available={availableQty}
+          money={shop.money}
+          onClose={() => setPendingProductId(null)}
+          onConfirm={confirmAddToCart}
+        />
+      )}
     </CustomerLayout>
   );
 }
