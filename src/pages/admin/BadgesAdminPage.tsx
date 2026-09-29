@@ -3,6 +3,7 @@ import { type Badge } from "../../data/mockData"
 import { useShop } from "../../data/shop"
 import { useFeedback } from "../../components/FeedbackProvider"
 import { AdminModal } from "../../components/AdminModal"
+import { ActionIconButton } from "../../components/ActionIconButton"
 import { Icon, iconName } from "../../components/Icon"
 const blank = (): Badge => ({
   id: "",
@@ -186,8 +187,10 @@ export function AdminBadgesPage() {
                   {customers.filter((c) => c.badges.includes(b.code)).length}{" "}
                   customers earned this
                 </p>
-                <div className="mt-3 flex gap-3 text-sm">
-                  <button
+                <div className="mt-3 flex items-center gap-2 text-sm">
+                  <ActionIconButton
+                    action="edit"
+                    label={`Edit ${b.name}`}
                     onClick={() =>
                       setEditing({
                         ...b,
@@ -216,11 +219,10 @@ export function AdminBadgesPage() {
                                     : 1),
                       })
                     }
-                    className="text-[var(--gold-mid)]"
-                  >
-                    Edit
-                  </button>
-                  <button
+                  />
+                  <ActionIconButton
+                    action="delete"
+                    label={`Delete ${b.name}`}
                     onClick={() => {
                       void confirm(`Delete ${b.name}?`).then((ok) => {
                         if (ok) {
@@ -229,10 +231,7 @@ export function AdminBadgesPage() {
                         }
                       })
                     }}
-                    className="text-red-400"
-                  >
-                    Delete
-                  </button>
+                  />
                 </div>
               </div>
             </div>

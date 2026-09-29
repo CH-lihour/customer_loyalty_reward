@@ -4,6 +4,7 @@ import { useShop } from "../../data/shop"
 import { useFeedback } from "../../components/FeedbackProvider"
 import { TierBadge } from "../../components/TierBadge"
 import { AdminModal } from "../../components/AdminModal"
+import { ActionIconButton } from "../../components/ActionIconButton"
 
 const tiers: Tier[] = ["Silver", "Gold", "Platinum"]
 
@@ -56,12 +57,7 @@ export function AdminTiersPage() {
         <h1 className="font-display text-2xl font-semibold">
           Membership Tiers
         </h1>
-        <button
-          onClick={openEditor}
-          className="rounded-lg bg-[var(--gold-mid)] px-4 py-2 font-semibold text-[var(--background)]"
-        >
-          Edit Tier Rules
-        </button>
+        <ActionIconButton action="edit" label="Edit tier rules" onClick={openEditor} />
       </div>
       {message && !editing && (
         <p role="status" className="text-sm text-[var(--gold-mid)]">

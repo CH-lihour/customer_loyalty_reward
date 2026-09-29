@@ -297,9 +297,34 @@ button:disabled {
   box-shadow: 0 24px 70px rgba(0, 0, 0, 0.5);
   animation: dialog-enter 0.26s cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
-.admin-modal {
+.add-to-cart-dialog {
+  position: fixed;
+  width: min(100% - 2rem, 28rem);
   max-height: calc(100dvh - 2rem);
   overflow-y: auto;
+  margin: auto;
+  padding: 1.5rem;
+  border: 1px solid rgba(232, 166, 52, 0.3);
+  border-radius: 1rem;
+  color: var(--foreground);
+  background: var(--card);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.5);
+  animation: dialog-enter 0.26s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.add-to-cart-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(5px);
+}
+.admin-modal {
+  position: fixed;
+  top: 1rem;
+  right: auto;
+  bottom: auto;
+  left: 50%;
+  translate: -50% 0;
+  max-height: calc(100dvh - 2rem);
+  overflow-y: auto;
+  margin: 0;
   padding: 0;
   border: 1px solid rgba(232, 166, 52, 0.3);
   border-radius: 1rem;
@@ -307,6 +332,12 @@ button:disabled {
   background: var(--card);
   box-shadow: 0 24px 70px rgba(0, 0, 0, 0.5);
   animation: dialog-enter 0.26s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+@media (min-width: 640px) {
+  .admin-modal {
+    top: 2rem;
+    max-height: calc(100dvh - 4rem);
+  }
 }
 .admin-modal::backdrop {
   background: rgba(0, 0, 0, 0.7);
@@ -319,6 +350,7 @@ button:disabled {
   .feedback-backdrop,
   .feedback-dialog,
   .product-dialog,
+  .add-to-cart-dialog,
   .admin-modal {
     animation: none;
   }

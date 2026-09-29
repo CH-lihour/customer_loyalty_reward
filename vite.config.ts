@@ -5,6 +5,14 @@ import path from 'node:path'
 
 import siteConfiguration from './.figma/make/site.json'
 
+const publicUrl = process.env.FIGMA_PUBLIC_URL?.trim()
+const basePath = publicUrl
+  ? /^https?:\/\//i.test(publicUrl)
+    ? `${publicUrl.replace(/\/+$/, '')}/`
+    : publicUrl.replace(/^\/+|\/+$/g, '')
+      ? `/${publicUrl.replace(/^\/+|\/+$/g, '')}/`
+      : '/'
+  : '/khmershop/'
 
 // Vite config — https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
@@ -12,7 +20,7 @@ export default defineConfig(({ mode }) => {
   const emitSourcemaps = mode === 'development'
 
   return {
-    base: process.env.FIGMA_PUBLIC_URL ? `${process.env.FIGMA_PUBLIC_URL}/` : '/',
+    base: basePath,
     build: {
       sourcemap: emitSourcemaps ? 'inline' : false,
       minify: !emitSourcemaps,
@@ -86,7 +94,7 @@ function figmaSiteConfiguration(config: FigmaSiteConfiguration): Plugin {
     return html.replace(`<!-- ${slotName} -->`, content)
   }
 
-  const title = config.title ?? "Figma Make App"
+  const title = config.title ?? "Khmer Shop"
   const description = config.description ?? ''
   const favicon = config.icons?.icon ?? ''
   const socialImage = config.openGraph?.image ?? ''

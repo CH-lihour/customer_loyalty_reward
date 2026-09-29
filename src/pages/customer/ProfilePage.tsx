@@ -3,6 +3,7 @@ import { useShop } from '../../data/shop';
 import { useFeedback } from '../../components/FeedbackProvider';
 import { TierBadge } from '../../components/TierBadge';
 import { Icon } from '../../components/Icon';
+import { ActionIconButton } from '../../components/ActionIconButton';
 
 const provinces = ['Phnom Penh', 'Siem Reap', 'Battambang', 'Kampong Cham', 'Kampot', 'Sihanoukville', 'Kandal', 'Takeo'];
 const field = 'w-full rounded-lg border border-[var(--border)] bg-[var(--secondary)] px-3 py-2 text-sm outline-none focus:border-[var(--gold-mid)]';
@@ -37,10 +38,10 @@ export function ProfilePage() {
     notify('Profile updated.', 'success');
   };
 
-  return <div className="mx-auto max-w-3xl space-y-5">
+  return <div className="w-full space-y-5">
     <div className="flex flex-wrap items-center justify-between gap-3">
       <h1 className="font-display text-2xl font-semibold">My Profile</h1>
-      <button type="button" onClick={editing ? () => setEditing(false) : openEditor} className="rounded-lg bg-[var(--gold-mid)] px-4 py-2 text-sm font-semibold text-[var(--background)]">{editing ? 'Cancel' : 'Edit Profile'}</button>
+      {editing ? <button type="button" onClick={() => setEditing(false)} className="rounded-lg border border-[var(--border)] px-4 py-2 text-sm font-semibold">Cancel</button> : <ActionIconButton action="edit" label="Edit profile" onClick={openEditor} />}
     </div>
     <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-6">
       <div className="mb-5 flex items-center gap-4">

@@ -27,6 +27,9 @@ const shapes: Record<string, ReactNode> = {
   arrowDown: <><path d="M12 4v16m-6-6 6 6 6-6"/></>,
   refresh: <><path d="M20 11a8 8 0 0 0-14-5L4 8m0-5v5h5M4 13a8 8 0 0 0 14 5l2-2m0 5v-5h-5"/></>,
   check: <path d="m4 12 5 5L20 6"/>,
+  trash: <><path d="M4 7h16M9 7V4h6v3m3 0-1 13H7L6 7m4 4v5m4-5v5"/></>,
+  edit: <><path d="m15 5 4 4M4 20l4.5-1 11-11a2.1 2.1 0 0 0-3-3l-11 11L4 20Z"/></>,
+  pause: <><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></>,
 };
 
 const legacy: Record<string, string> = {

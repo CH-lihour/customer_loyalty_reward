@@ -38,9 +38,10 @@ export function HomePage({ onNav, onAddToCart, guest = false, onSignIn }: Props)
 
   if (guest) return (
     <div className="flex flex-col gap-8">
-      <section className="rounded-2xl bg-gradient-to-br from-[#272238] via-[#1c2230] to-[#111722] p-8 md:p-12">
+      <h1 className="font-display text-2xl font-semibold">Home</h1>
+      <section className="rounded-2xl bg-gradient-to-br from-[#272238] via-[#1c2230] to-[#111722] p-6">
         <p className="mb-3 text-sm font-semibold text-[var(--gold-mid)]">Shop local · Earn more</p>
-        <h1 className="max-w-2xl font-display text-3xl font-semibold md:text-4xl">Discover Cambodian products and rewards</h1>
+        <h2 className="max-w-2xl font-display text-3xl font-semibold md:text-4xl">Discover Cambodian products and rewards</h2>
         <p className="mt-4 max-w-xl text-sm leading-relaxed text-[var(--muted-foreground)]">Browse KhmerShop without an account. Sign in when you’re ready to place an order and earn loyalty points.</p>
         <div className="mt-6 flex flex-wrap gap-3">
           <button onClick={() => onNav("products")} className="rounded-lg bg-[var(--gold-mid)] px-5 py-2.5 text-sm font-semibold text-[var(--background)]">Shop products</button>
@@ -71,9 +72,10 @@ export function HomePage({ onNav, onAddToCart, guest = false, onSignIn }: Props)
 
   return (
     <div className="flex flex-col gap-8">
+      <h1 className="font-display text-2xl font-semibold">Home</h1>
       {/* Hero loyalty card */}
       <div
-        className="relative overflow-hidden rounded-2xl p-6 md:p-8"
+        className="relative overflow-hidden rounded-2xl p-6"
         style={{
           background:
             "linear-gradient(135deg, #1a1e2e 0%, #1e2330 50%, #16192a 100%)",

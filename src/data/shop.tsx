@@ -100,6 +100,7 @@ type State = {
   cart: CartItem[];
   currentUserId: string;
   currency: "USD" | "KHR";
+  exchangeRate: number;
   qualifyingPoints: Record<string, number>;
   tierOverrides: Record<string, Tier | undefined>;
 };
@@ -131,6 +132,7 @@ const initial: State = {
   cart: [],
   currentUserId: CURRENT_USER.id,
   currency: "USD",
+  exchangeRate: 4000,
   qualifyingPoints: Object.fromEntries(
     [...customers, ...extraCustomers].map((c) => [c.id, c.points]),
   ),
@@ -145,6 +147,9 @@ function restoreState(saved: string | null): State {
     tiers.Platinum = { ...tiers.Platinum, max: Infinity };
     return {
       ...initial, ...parsed, tiers,
+      exchangeRate: typeof parsed.exchangeRate === "number" && Number.isSafeInteger(parsed.exchangeRate) && parsed.exchangeRate > 0 && parsed.exchangeRate <= 1_000_000_000
+        ? parsed.exchangeRate
+        : initial.exchangeRate,
       adminUsers: parsed.adminUsers?.length ? parsed.adminUsers : initial.adminUsers,
       disabledCustomerIds: parsed.disabledCustomerIds ?? [],
       rolePermissions: {
@@ -253,9 +258,10 @@ type Shop = State & {
   updateAdminProfile: (userId: string, fields: Pick<AdminUser, "name" | "email">) => string | null;
   currentUser: Customer;
   setCurrency: (currency: "USD" | "KHR") => void;
+  saveExchangeRate: (actorId: string, rate: number) => string | null;
   money: (usd: number) => string;
   setCart: (cart: CartItem[]) => void;
-  addToCart: (id: string) => void;
+  addToCart: (id: string, qty?: number) => void;
   checkout: (address: string, phone: string) => string | null;
   updateOrderStatus: (id: string, status: OrderStatus) => void;
   redeem: (id: string) => string | null;
@@ -390,30 +396,42 @@ export function ShopProvider({ children }: { children: ReactNode }) {
         const actor = state.adminUsers.find((item) => item.id === actorId && item.active);
         if (actor?.role !== "super_admin") return "Only Super Admin can change permissions.";
         if (role === "super_admin") return "Super Admin always has full access.";
-        const allowed = adminPages.filter((page) => page !== "users" && page !== "roles" && page !== "profile" && pages.includes(page));
+        const allowed = adminPages.filter((page) => page !== "users" && page !== "roles" && page !== "profile" && page !== "exchange-rate" && pages.includes(page));
         if (!allowed.length) return "Select at least one section for this role.";
         allowed.push("profile");
         setState((s) => ({ ...s, rolePermissions: { ...s.rolePermissions, [role]: allowed }, logs: [{ id: uid(), userId: actor.id, userName: actor.name, event: "ROLE_PERMISSIONS_UPDATED", description: `Updated ${role} permissions: ${allowed.join(", ")}`, timestamp: now().replace("T", " ").slice(0, 16) }, ...s.logs] }));
         return null;
       },
       setCurrency: (currency) => setState((s) => ({ ...s, currency })),
+      saveExchangeRate: (actorId, rate) => {
+        const actor = state.adminUsers.find((item) => item.id === actorId && item.active);
+        if (actor?.role !== "super_admin") return "Only Super Admin can change the exchange rate.";
+        if (!Number.isSafeInteger(rate) || rate < 1 || rate > 1_000_000_000)
+          return "Enter a whole-number KHR rate between 1 and 1,000,000,000.";
+        setState((s) => ({
+          ...s,
+          exchangeRate: rate,
+          logs: [{ id: uid(), userId: actor.id, userName: actor.name, event: "EXCHANGE_RATE_UPDATED", description: `Changed exchange rate from ${s.exchangeRate.toLocaleString()} to ${rate.toLocaleString()} KHR per USD`, timestamp: now().replace("T", " ").slice(0, 16) }, ...s.logs],
+        }));
+        return null;
+      },
       money: (usd) =>
         state.currency === "KHR"
-          ? `៛${Math.round(usd * 4000).toLocaleString()}`
+          ? `៛${Math.round(usd * state.exchangeRate).toLocaleString()}`
           : `$${usd.toFixed(2)}`,
       setCart: (cart) => setState((s) => ({ ...s, cart })),
-      addToCart: (id) =>
+      addToCart: (id, qty = 1) =>
         setState((s) => {
           const product = s.products.find((p) => p.id === id);
           const inCart = s.cart.find((c) => c.productId === id)?.qty ?? 0;
-          if (!product || product.stock <= inCart) return s;
+          if (!product || !Number.isInteger(qty) || qty < 1 || product.stock < inCart + qty) return s;
           return {
             ...s,
             cart: inCart
               ? s.cart.map((c) =>
-                  c.productId === id ? { ...c, qty: c.qty + 1 } : c,
+                  c.productId === id ? { ...c, qty: c.qty + qty } : c,
                 )
-              : [...s.cart, { productId: id, qty: 1 }],
+              : [...s.cart, { productId: id, qty }],
           };
         }),
       checkout: (address, phone) => {

@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { Icon } from "../../components/Icon";
+import { ActionIconButton } from "../../components/ActionIconButton";
 import { useFeedback } from "../../components/FeedbackProvider";
 import { adminPageLabels, adminRoleLabels } from "../../data/adminAccess";
 import { useShop } from "../../data/shop";
@@ -35,7 +36,7 @@ export function AdminProfilePage({ userId }: { userId: string }) {
   return <div className="mx-auto max-w-3xl space-y-5">
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div><h1 className="font-display text-2xl font-semibold">My Profile</h1><p className="mt-1 text-sm text-[var(--muted-foreground)]">Your admin account and current access.</p></div>
-      <button onClick={editing ? () => setEditing(false) : startEditing} className="rounded-lg bg-[var(--gold-mid)] px-4 py-2 text-sm font-semibold text-[var(--background)]">{editing ? "Cancel" : "Edit profile"}</button>
+      {editing ? <button type="button" onClick={() => setEditing(false)} className="rounded-lg border border-[var(--border)] px-4 py-2 text-sm font-semibold">Cancel</button> : <ActionIconButton action="edit" label="Edit profile" onClick={startEditing} />}
     </div>
     <section className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-6">
       <div className="mb-6 flex items-center gap-4">

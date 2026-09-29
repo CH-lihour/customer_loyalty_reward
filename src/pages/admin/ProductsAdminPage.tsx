@@ -3,6 +3,7 @@ import { categories, type Product } from "../../data/mockData"
 import { useShop } from "../../data/shop"
 import { useFeedback } from "../../components/FeedbackProvider"
 import { AdminModal } from "../../components/AdminModal"
+import { ActionIconButton } from "../../components/ActionIconButton"
 
 const blank = (): Product => ({
   id: "",
@@ -254,14 +255,12 @@ export function AdminProductsPage() {
                   <td className="p-3 text-right">
                     {p.normalPoints} Ã— {p.bonusMultiplier}
                   </td>
-                  <td className="p-3 text-right whitespace-nowrap">
-                    <button
-                      onClick={() => setEditing(p)}
-                      className="text-[var(--gold-mid)] mr-3"
-                    >
-                      Edit
-                    </button>
-                    <button
+                  <td className="p-3">
+                    <div className="flex justify-end gap-2">
+                    <ActionIconButton action="edit" label={`Edit ${p.name}`} onClick={() => setEditing(p)} />
+                    <ActionIconButton
+                      action="delete"
+                      label={`Delete ${p.name}`}
                       onClick={() => {
                         void confirm(`Delete ${p.name}?`).then((ok) => {
                           if (ok) {
@@ -270,10 +269,8 @@ export function AdminProductsPage() {
                           }
                         })
                       }}
-                      className="text-red-400"
-                    >
-                      Delete
-                    </button>
+                    />
+                    </div>
                   </td>
                 </tr>
               ))}

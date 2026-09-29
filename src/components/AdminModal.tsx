@@ -37,7 +37,7 @@ export function AdminModal({ title, onClose, children, wide = false }: Props) {
           onClose()
         }
       }}
-      className={`admin-modal m-auto w-[calc(100%-2rem)] ${
+      className={`admin-modal w-[calc(100%-2rem)] ${
         wide ? "max-w-4xl" : "max-w-xl"
       }`}
     >

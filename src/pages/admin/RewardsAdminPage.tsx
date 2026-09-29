@@ -4,6 +4,7 @@ import { useShop } from "../../data/shop"
 import { useFeedback } from "../../components/FeedbackProvider"
 import { TierBadge } from "../../components/TierBadge"
 import { AdminModal } from "../../components/AdminModal"
+import { ActionIconButton } from "../../components/ActionIconButton"
 
 const blank = (): Reward => ({
   id: "",
@@ -206,14 +207,11 @@ export function AdminRewardsPage() {
                 {r.pointsCost} pts Â· {r.stock} in stock Â·{" "}
                 {r.active ? "Active" : "Inactive"}
               </p>
-              <div className="flex gap-3 text-sm">
-                <button
-                  onClick={() => setEditing(r)}
-                  className="text-[var(--gold-mid)]"
-                >
-                  Edit
-                </button>
-                <button
+              <div className="flex items-center gap-2 text-sm">
+                <ActionIconButton action="edit" label={`Edit ${r.name}`} onClick={() => setEditing(r)} />
+                <ActionIconButton
+                  action={r.active ? "deactivate" : "activate"}
+                  label={`${r.active ? "Deactivate" : "Activate"} ${r.name}`}
                   onClick={() => {
                     saveReward({ ...r, active: !r.active })
                     notify(
@@ -221,10 +219,10 @@ export function AdminRewardsPage() {
                       "success",
                     )
                   }}
-                >
-                  {r.active ? "Deactivate" : "Activate"}
-                </button>
-                <button
+                />
+                <ActionIconButton
+                  action="delete"
+                  label={`Delete ${r.name}`}
                   onClick={() => {
                     void confirm(`Delete ${r.name}?`).then((ok) => {
                       if (ok) {
@@ -233,10 +231,7 @@ export function AdminRewardsPage() {
                       }
                     })
                   }}
-                  className="text-red-400"
-                >
-                  Delete
-                </button>
+                />
               </div>
             </div>
           </div>
