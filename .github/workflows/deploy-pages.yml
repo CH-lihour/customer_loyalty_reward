@@ -41,7 +41,7 @@ jobs:
       - name: Build for GitHub Pages
         run: pnpm build
         env:
-          FIGMA_PUBLIC_URL: /group_pos_system
+          FIGMA_PUBLIC_URL: /customer_loyalty_reward
 
       - name: Support direct page links
         run: cp dist/index.html dist/404.html
