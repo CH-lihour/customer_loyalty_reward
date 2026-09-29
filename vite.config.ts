@@ -12,7 +12,7 @@ const basePath = publicUrl
     : publicUrl.replace(/^\/+|\/+$/g, '')
       ? `/${publicUrl.replace(/^\/+|\/+$/g, '')}/`
       : '/'
-  : '/khmershop/'
+  : '/'
 
 // Vite config — https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
