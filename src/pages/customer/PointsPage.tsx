@@ -7,6 +7,7 @@ const typeColors: Record<string, string> = {
   SPEND: "text-red-400",
   ADJUST: "text-blue-400",
   REFERRAL: "text-purple-400",
+  REFUND: "text-cyan-400",
 };
 
 const typeIcons: Record<string, string> = {
@@ -14,6 +15,7 @@ const typeIcons: Record<string, string> = {
   SPEND: "↓",
   ADJUST: "⟳",
   REFERRAL: "users",
+  REFUND: "refresh",
 };
 
 export function PointsPage() {

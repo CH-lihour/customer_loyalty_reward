@@ -63,7 +63,7 @@ export interface LoyaltyTransaction {
   id: string;
   userId: string;
   userName: string;
-  type: "EARN" | "SPEND" | "ADJUST" | "REFERRAL";
+  type: "EARN" | "SPEND" | "ADJUST" | "REFERRAL" | "REFUND";
   points: number;
   balanceBefore: number;
   balanceAfter: number;
@@ -78,6 +78,7 @@ export interface Reward {
   nameKh: string;
   description: string;
   pointsCost: number;
+  /** Opening quantity only, used to seed the stock ledger. Live levels come from `stockMovements`. */
   stock: number;
   minTier: Tier;
   active: boolean;

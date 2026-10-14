@@ -37,6 +37,7 @@ export function AdminPointsPage() {
     SPEND: "text-red-400 bg-red-400/10",
     ADJUST: "text-blue-400 bg-blue-400/10",
     REFERRAL: "text-purple-400 bg-purple-400/10",
+    REFUND: "text-cyan-400 bg-cyan-400/10",
   }
 
   return (

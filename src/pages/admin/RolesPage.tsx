@@ -4,17 +4,21 @@ import { useModalState } from "../../components/useModalState";
 import { Icon } from "../../components/Icon";
 import { useFeedback } from "../../components/FeedbackProvider";
 import { useShop } from "../../data/shop";
-import { adminPageLabels, type AdminPage, type AdminRole } from "../../data/adminAccess";
+import { adminPageLabels, inventoryPages, type AdminPage, type AdminRole } from "../../data/adminAccess";
+import { stockAuthorityLabels } from "../../data/stock";
 
 const roleDescriptions: Record<string, string> = {
   super_admin: "Full access to every admin section and setting.",
   marketing_manager: "Manage the storefront, campaigns, and promotions.",
   loyalty_manager: "Manage customers, points, and loyalty benefits.",
+  stock_manager: "Run reward inventory: adjustments, write-offs, stocktakes, and reports.",
+  stock_clerk: "Receive, transfer, count, and fulfil reward stock.",
 };
 const permissionGroups: { title: string; description: string; pages: AdminPage[] }[] = [
   { title: "Overview", description: "Monitor the business at a glance.", pages: ["dashboard", "analytics"] },
   { title: "Commerce", description: "Manage customers and store activity.", pages: ["customers", "products", "orders"] },
   { title: "Loyalty programs", description: "Run points, rewards, and promotions.", pages: ["points", "tiers", "campaigns", "rewards", "badges", "referrals"] },
+  { title: "Inventory", description: "Reward stock, fulfilment, and counts.", pages: inventoryPages },
   { title: "Operations", description: "Review administrative activity.", pages: ["logs"] },
 ];
 const editablePages = permissionGroups.flatMap((group) => group.pages);
@@ -31,10 +35,17 @@ const pageDetails: Partial<Record<AdminPage, { icon: string; description: string
   badges: { icon: "medal", description: "Customer achievements" },
   referrals: { icon: "users", description: "Referral activity" },
   logs: { icon: "list", description: "Audit trail" },
+  "stock-alerts": { icon: "alert", description: "Reorder and expiry alerts" },
+  stock: { icon: "warehouse", description: "Levels and item history" },
+  "stock-movements": { icon: "swap", description: "Ledger, receive, transfer" },
+  fulfillment: { icon: "truck", description: "Reservations and backorders" },
+  stocktake: { icon: "clipboard", description: "Cycle counts and variances" },
+  "stock-reports": { icon: "chart", description: "Valuation and reconciliation" },
+  suppliers: { icon: "supplier", description: "Suppliers and locations" },
 };
 
 export function AdminRolesPage({ actorId }: { actorId: string }) {
-  const { roleLabels, rolePermissions, saveRolePermissions, createAdminRole } = useShop();
+  const { roleLabels, rolePermissions, saveRolePermissions, createAdminRole, stockAuthority, saveStockAuthority } = useShop();
   const { notify } = useFeedback();
   const [role, setRole] = useState<AdminRole>("marketing_manager");
   const [draft, setDraft] = useState<Partial<Record<AdminRole, AdminPage[]>>>({});
@@ -55,6 +66,10 @@ export function AdminRolesPage({ actorId }: { actorId: string }) {
   const toggle = (page: AdminPage) => updatePermissions(selected.includes(page)
     ? selected.filter((item) => item !== page)
     : [...selected, page]);
+  const changeStockAuthority = (level: "clerk" | "manager") => {
+    const result = saveStockAuthority(actorId, role, level);
+    notify(result ?? `${roleLabels[role]} now has ${stockAuthorityLabels[level].toLowerCase()} authority.`, result ? "error" : "success");
+  };
   const save = () => {
     if (readOnly || !hasChanges) return;
     const result = saveRolePermissions(actorId, role, selected);
@@ -101,7 +116,7 @@ export function AdminRolesPage({ actorId }: { actorId: string }) {
               className={`rounded-xl border p-4 text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--gold-mid)] ${active ? "border-[var(--gold-mid)] bg-[rgba(232,166,52,0.09)]" : "border-[var(--border)] bg-[var(--card)] hover:border-[rgba(232,166,52,0.4)]"}`}>
               <span className="flex items-start justify-between gap-3">
                 <span className={`grid h-9 w-9 place-items-center rounded-lg ${active ? "bg-[var(--gold-mid)] text-[var(--background)]" : "bg-[var(--secondary)] text-[var(--gold-mid)]"}`}>
-                  <Icon name={item === "super_admin" ? "lock" : item === "marketing_manager" ? "tag" : item === "loyalty_manager" ? "trophy" : "users"} className="h-5 w-5" />
+                  <Icon name={item === "super_admin" ? "lock" : item === "marketing_manager" ? "tag" : item === "loyalty_manager" ? "trophy" : item === "stock_manager" ? "warehouse" : item === "stock_clerk" ? "clipboard" : "users"} className="h-5 w-5" />
                 </span>
                 {modified && <span className="rounded-full bg-[rgba(232,166,52,0.14)] px-2 py-0.5 text-[10px] font-semibold text-[var(--gold-mid)]">Unsaved</span>}
               </span>
@@ -139,6 +154,27 @@ export function AdminRolesPage({ actorId }: { actorId: string }) {
                 <div><h3 className="text-base font-semibold">{group.title}</h3><p className="text-xs text-[var(--muted-foreground)]">{group.description}</p></div>
                 <span className="shrink-0 rounded-full bg-[var(--secondary)] px-2 py-1 text-xs text-[var(--muted-foreground)]">{group.pages.filter((page) => selected.includes(page)).length}/{group.pages.length}</span>
               </div>
+              {group.title === "Inventory" && (
+                <div className="mb-3 rounded-lg border border-[var(--border)] bg-[var(--card)] p-3">
+                  <div className="text-sm font-medium">Stock authority</div>
+                  <p className="mb-2 text-xs text-[var(--muted-foreground)]">Clerks receive, transfer, return, count, and fulfil. Managers also adjust, write off, post counts, cancel redemptions, and edit stock rules. Saved immediately.</p>
+                  {readOnly ? (
+                    <span className="text-xs font-semibold text-[var(--gold-mid)]">{stockAuthorityLabels.admin}: every stock action and setting</span>
+                  ) : (
+                    <div className="flex gap-2" role="radiogroup" aria-label="Stock authority">
+                      {(["clerk", "manager"] as const).map((level) => {
+                        const current = (stockAuthority[role] ?? "clerk") === level;
+                        return (
+                          <button key={level} type="button" role="radio" aria-checked={current} onClick={() => !current && changeStockAuthority(level)}
+                            className={`flex-1 rounded-lg border px-3 py-1.5 text-xs font-medium ${current ? "border-[var(--gold-mid)] bg-[rgba(232,166,52,0.09)] text-[var(--gold-mid)]" : "border-[var(--border)] hover:bg-[var(--secondary)]"}`}>
+                            {stockAuthorityLabels[level]}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
               <div className="space-y-2">
                 {group.pages.map((page) => {
                   const enabled = selected.includes(page);

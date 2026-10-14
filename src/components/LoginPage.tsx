@@ -326,7 +326,7 @@ export function LoginPage({ initialRole = "customer", onRoleChange, onLogin, onR
                 >
                   Fill demo credentials
                 </button>
-                {role === "admin" && <p className="text-center text-xs text-[var(--muted-foreground)]">Staff demo accounts use password admin1234.</p>}
+                {role === "admin" && <p className="text-center text-xs text-[var(--muted-foreground)]">Staff demo accounts use password admin1234. Inventory roles: stock.manager@khmershop.local and stock.clerk@khmershop.local.</p>}
                 {role === "customer" && (
                   <p className="pt-2 text-center text-sm text-[var(--muted-foreground)]">
                     New customer?{" "}

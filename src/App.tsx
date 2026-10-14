@@ -39,6 +39,13 @@ import { AdminUsersPage } from "./pages/admin/UsersPage";
 import { AdminRolesPage } from "./pages/admin/RolesPage";
 import { AdminExchangeRatePage } from "./pages/admin/ExchangeRatePage";
 import { AdminProfilePage } from "./pages/admin/ProfilePage";
+import { AdminStockAlertsPage } from "./pages/admin/StockAlertsPage";
+import { AdminStockPage } from "./pages/admin/StockPage";
+import { AdminStockMovementsPage } from "./pages/admin/StockMovementsPage";
+import { AdminFulfillmentPage } from "./pages/admin/FulfillmentPage";
+import { AdminStocktakePage } from "./pages/admin/StocktakePage";
+import { AdminStockReportsPage } from "./pages/admin/StockReportsPage";
+import { AdminSuppliersPage } from "./pages/admin/SuppliersPage";
 
 type CustomerPage =
   | "home"
@@ -328,6 +335,13 @@ export default function App() {
         {adminPage === "rewards" && <AdminRewardsPage />}
         {adminPage === "badges" && <AdminBadgesPage />}
         {adminPage === "referrals" && <AdminReferralsPage />}
+        {adminPage === "stock-alerts" && <AdminStockAlertsPage actorId={adminUser.id} onNav={navigateAdmin} />}
+        {adminPage === "stock" && <AdminStockPage actorId={adminUser.id} />}
+        {adminPage === "stock-movements" && <AdminStockMovementsPage actorId={adminUser.id} />}
+        {adminPage === "fulfillment" && <AdminFulfillmentPage actorId={adminUser.id} />}
+        {adminPage === "stocktake" && <AdminStocktakePage actorId={adminUser.id} />}
+        {adminPage === "stock-reports" && <AdminStockReportsPage />}
+        {adminPage === "suppliers" && <AdminSuppliersPage actorId={adminUser.id} />}
         {adminPage === "logs" && <AdminActivityLogsPage />}
         {adminPage === "analytics" && <AdminAnalyticsPage />}
         {adminPage === "users" && <AdminUsersPage actorId={adminUser.id} />}

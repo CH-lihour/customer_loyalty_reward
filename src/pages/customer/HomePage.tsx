@@ -19,6 +19,8 @@ export function HomePage({ onNav, onAddToCart, guest = false, onSignIn }: Props)
     tiers: tierConfig,
     qualifyingPoints,
     money,
+    availableFor,
+    stockItemFor,
   } = useShop();
   const tier = CURRENT_USER.tier;
   const config = tierConfig[tier];
@@ -169,7 +171,7 @@ export function HomePage({ onNav, onAddToCart, guest = false, onSignIn }: Props)
               .filter(
                 (r) =>
                   r.active &&
-                  r.stock > 0 &&
+                  (availableFor(r.id) > 0 || stockItemFor(r.id).allowBackorder) &&
                   r.pointsCost <= CURRENT_USER.points &&
                   tierConfig[r.minTier].min <= tierConfig[tier].min,
               )

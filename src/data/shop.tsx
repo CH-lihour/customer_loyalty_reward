@@ -1,8 +1,10 @@
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -30,21 +32,45 @@ import {
   adminPages,
   defaultAdminRoleLabels,
   defaultRolePermissions,
+  defaultStockAuthority,
   initialAdminUsers,
+  inventoryPages,
   type AdminPage,
   type AdminRole,
   type AdminUser,
 } from "./adminAccess";
+import {
+  batchExpiries,
+  buildStockSeed,
+  computeLevels,
+  defaultStockItem,
+  initialLocations,
+  initialStockItems,
+  initialSuppliers,
+  levelKey,
+  pickBatches,
+  stockAuthorityLabels,
+  stockAuthorityRank,
+  openRedemptionStatuses,
+  totalsFor,
+  variantIds,
+  variantLabel,
+  type Redemption,
+  type RedemptionStatus,
+  type RestockRequest,
+  type StockAuthority,
+  type StockItem,
+  type StockLevel,
+  type StockLocation,
+  type StockMovement,
+  type StockSettings,
+  type Stocktake,
+  type StocktakeLine,
+  type Supplier,
+} from "./stock";
 
+export type { Redemption } from "./stock";
 export type CartItem = { productId: string; qty: number };
-export type Redemption = {
-  id: string;
-  userId: string;
-  rewardId: string;
-  rewardName: string;
-  points: number;
-  createdAt: string;
-};
 export type Referral = {
   id: string;
   referrerId: string;
@@ -105,7 +131,40 @@ type State = {
   exchangeRate: number;
   qualifyingPoints: Record<string, number>;
   tierOverrides: Record<string, Tier | undefined>;
+  stockLocations: StockLocation[];
+  suppliers: Supplier[];
+  stockItems: Record<string, StockItem>;
+  stockMovements: StockMovement[];
+  stocktakes: Stocktake[];
+  restockRequests: RestockRequest[];
+  stockSettings: StockSettings;
+  stockAuthority: Record<AdminRole, "clerk" | "manager">;
 };
+
+/** Fields shared by every stock form: what, which variant, where, and how many. */
+export type StockLineInput = {
+  rewardId: string;
+  variantId: string;
+  locationId: string;
+  qty: number;
+  batch?: string;
+  expiresAt?: string;
+  serials?: string[];
+};
+export type ReceiveInput = StockLineInput & {
+  source: "PURCHASE" | "DONATION";
+  supplierId: string;
+  unitCost: number;
+  reference: string;
+  note: string;
+};
+export type AdjustInput = StockLineInput & { direction: "in" | "out"; reason: string };
+export type TransferInput = StockLineInput & { toLocationId: string; note: string };
+export type WriteOffInput = StockLineInput & { kind: "DAMAGE" | "LOSS" | "EXPIRY"; reason: string };
+export type ReturnInput = StockLineInput & { redemptionId: string; refundPoints: boolean; reason: string };
+
+const stockSettingsDefault: StockSettings = { reservationHours: 72 };
+const stockSeed = buildStockSeed(rewards, [...customers, ...extraCustomers], stockSettingsDefault.reservationHours);
 
 const initial: State = {
   adminUsers: initialAdminUsers,
@@ -115,11 +174,11 @@ const initial: State = {
   customers: [...customers, ...extraCustomers],
   products: [...products, ...extraProducts],
   orders,
-  transactions: loyaltyTransactions,
+  transactions: [...stockSeed.transactions, ...loyaltyTransactions],
   rewards,
   badges,
   logs: activityLog,
-  redemptions: [],
+  redemptions: stockSeed.redemptions,
   tierHistory: [],
   campaigns: [],
   referrals: [
@@ -140,8 +199,67 @@ const initial: State = {
     [...customers, ...extraCustomers].map((c) => [c.id, c.points]),
   ),
   tierOverrides: {},
+  stockLocations: initialLocations,
+  suppliers: initialSuppliers,
+  stockItems: initialStockItems,
+  stockMovements: stockSeed.movements,
+  stocktakes: [],
+  restockRequests: stockSeed.restockRequests,
+  stockSettings: stockSettingsDefault,
+  stockAuthority: defaultStockAuthority,
 };
 const key = "khmershop-frontend-v1";
+const redemptionStatuses: RedemptionStatus[] = ["RESERVED", "BACKORDERED", "FULFILLED", "CANCELLED", "EXPIRED", "RETURNED"];
+
+/** Brings saved state from before the stock module up to date. */
+function restoreStock(parsed: Partial<State>, rewardList: Reward[], roleLabels: Record<AdminRole, string>) {
+  const hasLedger = Array.isArray(parsed.stockMovements);
+  const stockMovements = hasLedger ? parsed.stockMovements! : [...initial.stockMovements];
+  if (!hasLedger) {
+    // Rewards created before the ledger existed get an opening balance from their old stock field.
+    for (const reward of rewardList) {
+      if (initial.stockItems[reward.id] || !(reward.stock > 0)) continue;
+      stockMovements.unshift({
+        id: uid(), createdAt: now(), type: "RECEIVE", rewardId: reward.id, variantId: "", locationId: initialLocations[0].id,
+        onHand: Math.floor(reward.stock), reserved: 0, unitCost: 0, reason: "Opening balance (migrated)", actorId: "system", actorName: "System",
+      });
+    }
+  }
+  const savedRedemptions = (parsed.redemptions ?? []).map((r): Redemption => ({
+    ...r,
+    variantId: r.variantId ?? "",
+    status: redemptionStatuses.includes(r.status) ? r.status : "FULFILLED",
+    legacy: r.legacy ?? !redemptionStatuses.includes(r.status),
+  }));
+  const redemptions = hasLedger
+    ? savedRedemptions
+    : [...savedRedemptions, ...initial.redemptions.filter((r) => !savedRedemptions.some((item) => item.id === r.id))];
+  const transactions = hasLedger || !parsed.transactions
+    ? parsed.transactions
+    : [...stockSeed.transactions.filter((t) => !parsed.transactions!.some((item) => item.id === t.id)), ...parsed.transactions];
+  const stockItems: Record<string, StockItem> = { ...initial.stockItems, ...parsed.stockItems };
+  for (const reward of rewardList) stockItems[reward.id] ??= defaultStockItem(reward);
+  const stockAuthority = { ...defaultStockAuthority };
+  for (const [role, level] of Object.entries(parsed.stockAuthority ?? {})) {
+    if (role !== "super_admin" && Object.prototype.hasOwnProperty.call(roleLabels, role) && (level === "clerk" || level === "manager"))
+      stockAuthority[role] = level;
+  }
+  const hours = parsed.stockSettings?.reservationHours;
+  return {
+    stockMovements,
+    redemptions,
+    ...(transactions ? { transactions } : {}),
+    stockItems,
+    stockAuthority,
+    stockLocations: parsed.stockLocations?.length ? parsed.stockLocations : initial.stockLocations,
+    suppliers: parsed.suppliers ?? initial.suppliers,
+    stocktakes: parsed.stocktakes ?? [],
+    restockRequests: parsed.restockRequests ?? (hasLedger ? [] : initial.restockRequests),
+    stockSettings: {
+      reservationHours: typeof hours === "number" && Number.isInteger(hours) && hours >= 1 && hours <= 720 ? hours : stockSettingsDefault.reservationHours,
+    },
+  };
+}
 function restoreState(saved: string | null): State {
   if (!saved) return initial;
   try {
@@ -166,10 +284,13 @@ function restoreState(saved: string | null): State {
       exchangeRate: typeof parsed.exchangeRate === "number" && Number.isSafeInteger(parsed.exchangeRate) && parsed.exchangeRate > 0 && parsed.exchangeRate <= 1_000_000_000
         ? parsed.exchangeRate
         : initial.exchangeRate,
-      adminUsers: parsed.adminUsers?.length ? parsed.adminUsers : initial.adminUsers,
+      adminUsers: parsed.adminUsers?.length
+        ? [...parsed.adminUsers, ...initial.adminUsers.filter((seed) => !parsed.adminUsers!.some((user) => user.id === seed.id || user.email.toLowerCase() === seed.email))]
+        : initial.adminUsers,
       disabledCustomerIds: parsed.disabledCustomerIds ?? [],
       roleLabels,
       rolePermissions,
+      ...restoreStock(parsed, parsed.rewards ?? initial.rewards, roleLabels),
     };
   } catch {
     return initial;
@@ -180,6 +301,7 @@ const uid = () =>
   `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 const now = () => new Date().toISOString();
 const date = () => now().slice(0, 10);
+const stamp = () => now().replace("T", " ").slice(0, 16);
 const tierFor = (points: number, tiers: State["tiers"]): Tier =>
   points >= tiers.Platinum.min
     ? "Platinum"
@@ -261,6 +383,234 @@ const awardBadges = (s: State, userId: string): State => {
   };
 };
 
+const staffLog = (s: State, actor: { id: string; name: string }, event: string, description: string): LogEntry[] => [
+  { id: uid(), userId: actor.id, userName: actor.name, event, description, timestamp: stamp() },
+  ...s.logs,
+];
+const systemActor = { id: "system", name: "System" };
+const authorityFor = (s: State, role: AdminRole): StockAuthority =>
+  role === "super_admin" ? "admin" : (s.stockAuthority[role] ?? "clerk");
+/** Returns the acting staff user, or an error when they lack the stock authority level. */
+const stockActor = (s: State, actorId: string, need: StockAuthority): AdminUser | string => {
+  const actor = s.adminUsers.find((user) => user.id === actorId && user.active);
+  if (!actor) return "Staff account not found.";
+  if (actor.role !== "super_admin" && !(s.rolePermissions[actor.role] ?? []).some((page) => inventoryPages.includes(page)))
+    return "Your role has no inventory access.";
+  if (stockAuthorityRank[authorityFor(s, actor.role)] < stockAuthorityRank[need])
+    return `This action needs ${stockAuthorityLabels[need].toLowerCase()} authority.`;
+  return actor;
+};
+const stockItemOf = (s: State, rewardId: string) => s.stockItems[rewardId] ?? defaultStockItem({ id: rewardId });
+const activeLocationIds = (s: State) => s.stockLocations.filter((l) => l.active).map((l) => l.id);
+const normalizeSerials = (serials: string[] = []) =>
+  [...new Set(serials.map((serial) => serial.trim().toUpperCase()).filter(Boolean))];
+const describeLine = (s: State, line: Pick<StockLineInput, "rewardId" | "variantId">, qty: number) => {
+  const item = stockItemOf(s, line.rewardId);
+  const name = s.rewards.find((r) => r.id === line.rewardId)?.name ?? line.rewardId;
+  return `${qty} × ${name}${item.variants.length ? ` (${variantLabel(item, line.variantId)})` : ""} [${item.sku}]`;
+};
+const locationName = (s: State, id: string) => s.stockLocations.find((l) => l.id === id)?.name ?? id;
+
+type StockPart = { qty: number; batch?: string; expiresAt?: string; serials?: string[] };
+
+/** Checks the reward, variant, location and quantity shared by every stock form. */
+const checkLine = (s: State, line: StockLineInput, needActiveLocation: boolean) => {
+  const reward = s.rewards.find((r) => r.id === line.rewardId);
+  if (!reward) return "Choose a reward item.";
+  const item = stockItemOf(s, line.rewardId);
+  if (!variantIds(item).includes(line.variantId)) return item.variants.length ? "Choose a variant." : "This item has no variants.";
+  const location = s.stockLocations.find((l) => l.id === line.locationId);
+  if (!location) return "Choose a location.";
+  if (needActiveLocation && !location.active) return `${location.name} is inactive.`;
+  if (!Number.isInteger(line.qty) || line.qty < 1) return "Enter a whole quantity of at least 1.";
+  if (line.qty > 100000) return "Quantity is too large.";
+  return { reward, item };
+};
+
+/** Works out batches or serials for stock coming in. */
+const resolveIn = (s: State, levels: StockLevel[], item: StockItem, line: StockLineInput): StockPart[] | string => {
+  if (item.tracking === "batch") {
+    const batch = line.batch?.trim().toUpperCase() ?? "";
+    if (!batch) return "Enter a batch or lot code.";
+    const existing = batchExpiries(s.stockMovements).get(`${line.rewardId}|${batch}`);
+    if (existing && line.expiresAt && line.expiresAt !== existing)
+      return `Batch ${batch} already expires on ${existing}.`;
+    return [{ qty: line.qty, batch, expiresAt: existing ? undefined : line.expiresAt || undefined }];
+  }
+  if (item.tracking === "serial") {
+    const serials = normalizeSerials(line.serials);
+    if (serials.length !== line.qty) return `Enter ${line.qty} unique serial number${line.qty === 1 ? "" : "s"} (one per unit).`;
+    const inStock = new Set(levels.filter((l) => l.rewardId === line.rewardId).flatMap((l) => l.serials));
+    const clash = serials.find((serial) => inStock.has(serial));
+    if (clash) return `Serial ${clash} is already in stock.`;
+    return [{ qty: line.qty, serials }];
+  }
+  return [{ qty: line.qty }];
+};
+
+/**
+ * Works out batches or serials for stock going out.
+ * "available": unreserved, unexpired stock (or explicitly chosen expired stock).
+ * "reserved": stock already held by a reservation. "expired": expired batches only.
+ */
+const resolveOut = (
+  level: StockLevel | undefined,
+  item: StockItem,
+  line: StockLineInput,
+  mode: "available" | "reserved" | "expired",
+): StockPart[] | string => {
+  if (!level || level.onHand <= 0) return "There is no stock of this item at that location.";
+  const today = date();
+  const usable = level.onHand - level.expired;
+  if (item.tracking === "batch") {
+    const chosen = line.batch?.trim().toUpperCase();
+    if (chosen) {
+      const batch = level.batches.find((b) => b.batch === chosen);
+      if (!batch || batch.onHand < line.qty) return `Batch ${chosen} has only ${batch?.onHand ?? 0} on hand here.`;
+      const expired = !!batch.expiresAt && batch.expiresAt < today;
+      if (mode === "expired" && !expired) return `Batch ${chosen} has not expired.`;
+      if (mode === "reserved" && expired) return `Batch ${chosen} has expired.`;
+      if (mode === "available" && !expired && line.qty > level.available)
+        return `Only ${level.available} unreserved unit${level.available === 1 ? "" : "s"} available here.`;
+      return [{ qty: line.qty, batch: chosen }];
+    }
+    if (mode === "available" && line.qty > level.available)
+      return `Only ${level.available} unreserved unit${level.available === 1 ? "" : "s"} available here.`;
+    const picks = pickBatches(level.batches, line.qty, mode === "expired" ? "expired" : "usable", today);
+    if (!picks) return mode === "expired" ? "Not enough expired stock here." : "Not enough unexpired stock here.";
+    return picks.map((p) => ({ qty: p.qty, batch: p.batch }));
+  }
+  if (mode === "expired") return "This item does not track expiry dates.";
+  const capacity = mode === "reserved" ? usable : level.available;
+  if (line.qty > capacity) return `Only ${capacity} unit${capacity === 1 ? "" : "s"} available here.`;
+  if (item.tracking === "serial") {
+    let serials = normalizeSerials(line.serials);
+    if (!serials.length && mode === "reserved") serials = level.serials.slice(0, line.qty);
+    if (serials.length !== line.qty) return `Choose ${line.qty} serial number${line.qty === 1 ? "" : "s"}.`;
+    const missing = serials.find((serial) => !level.serials.includes(serial));
+    if (missing) return `Serial ${missing} is not in stock here.`;
+    return [{ qty: line.qty, serials }];
+  }
+  return [{ qty: line.qty }];
+};
+
+type MovementBase = Pick<StockMovement, "type" | "rewardId" | "variantId" | "locationId"> &
+  Partial<Pick<StockMovement, "reference" | "reason" | "supplierId" | "source" | "unitCost">>;
+const buildMovements = (
+  s: State,
+  actor: { id: string; name: string },
+  base: MovementBase,
+  parts: StockPart[],
+  sign: 1 | -1,
+  reservedDelta = 0,
+): StockMovement[] => {
+  const createdAt = now();
+  return parts.map((part) => ({
+    id: uid(),
+    createdAt,
+    unitCost: stockItemOf(s, base.rewardId).unitCost,
+    ...base,
+    onHand: sign * part.qty,
+    reserved: reservedDelta,
+    batch: part.batch,
+    expiresAt: part.expiresAt,
+    serials: part.serials,
+    actorId: actor.id,
+    actorName: actor.name,
+  }));
+};
+const appendMovements = (s: State, movements: StockMovement[]): State =>
+  movements.length ? { ...s, stockMovements: [...[...movements].reverse(), ...s.stockMovements] } : s;
+const reservationEnd = (s: State, from = Date.now()) =>
+  new Date(from + s.stockSettings.reservationHours * 3600000).toISOString();
+
+/** Allocates freed stock to backorders (oldest first) and flags "notify me" requests that can now be met. */
+const settleStock = (s: State): State => {
+  const backorders = s.redemptions.filter((r) => r.status === "BACKORDERED").reverse();
+  const pending = s.restockRequests.filter((r) => !r.notifiedAt);
+  if (!backorders.length && !pending.length) return s;
+  const locations = activeLocationIds(s);
+  const available = new Map(computeLevels(s.stockMovements).map((l) => [l.key, l.available]));
+  let next = s;
+  for (const redemption of backorders) {
+    const best = locations
+      .map((id) => ({ id, qty: available.get(levelKey(redemption.rewardId, redemption.variantId, id)) ?? 0 }))
+      .sort((a, b) => b.qty - a.qty)[0];
+    if (!best || best.qty < 1) continue;
+    available.set(levelKey(redemption.rewardId, redemption.variantId, best.id), best.qty - 1);
+    next = appendMovements(next, buildMovements(next, systemActor, {
+      type: "RESERVE", rewardId: redemption.rewardId, variantId: redemption.variantId, locationId: best.id,
+      reference: redemption.id, reason: "Backorder allocated",
+    }, [{ qty: 0 }], 1, 1));
+    next = {
+      ...next,
+      redemptions: next.redemptions.map((r) => r.id === redemption.id
+        ? { ...r, status: "RESERVED", locationId: best.id, reservedAt: now(), reservedUntil: reservationEnd(next) }
+        : r),
+    };
+    const user = next.customers.find((c) => c.id === redemption.userId);
+    if (user) next = { ...next, logs: log(next, user, "BACKORDER_RESERVED", `${redemption.rewardName} is back in stock and reserved at ${locationName(next, best.id)}`) };
+  }
+  const notified = pending.filter((request) => {
+    const reward = next.rewards.find((r) => r.id === request.rewardId);
+    return reward?.active && locations.some((id) => (available.get(levelKey(request.rewardId, request.variantId, id)) ?? 0) > 0);
+  });
+  if (notified.length) {
+    const ids = new Set(notified.map((r) => r.id));
+    next = { ...next, restockRequests: next.restockRequests.map((r) => ids.has(r.id) ? { ...r, notifiedAt: now() } : r) };
+    for (const request of notified) {
+      const user = next.customers.find((c) => c.id === request.userId);
+      const reward = next.rewards.find((r) => r.id === request.rewardId);
+      if (user && reward) next = { ...next, logs: log(next, user, "RESTOCK_NOTIFIED", `${reward.name} is back in stock`) };
+    }
+  }
+  return next;
+};
+
+/** Ends a reserved or backordered redemption: releases its stock and refunds the points. */
+const closeRedemption = (
+  s: State,
+  redemption: Redemption,
+  status: "CANCELLED" | "EXPIRED",
+  reason: string,
+  actor: { id: string; name: string },
+): State => {
+  let next = s;
+  if (redemption.status === "RESERVED" && redemption.locationId)
+    next = appendMovements(next, buildMovements(next, actor, {
+      type: "RELEASE", rewardId: redemption.rewardId, variantId: redemption.variantId, locationId: redemption.locationId,
+      reference: redemption.id, reason,
+    }, [{ qty: 0 }], 1, -1));
+  next = refundPoints(next, redemption, reason);
+  return {
+    ...next,
+    redemptions: next.redemptions.map((r) => r.id === redemption.id ? { ...r, status, closedAt: now(), closeReason: reason } : r),
+  };
+};
+const refundPoints = (s: State, redemption: Redemption, reason: string): State => {
+  const user = s.customers.find((c) => c.id === redemption.userId);
+  if (!user) return s;
+  return {
+    ...s,
+    customers: s.customers.map((c) => c.id === user.id ? { ...c, points: c.points + redemption.points } : c),
+    transactions: [{
+      id: uid(), userId: user.id, userName: user.name, type: "REFUND", points: redemption.points,
+      balanceBefore: user.points, balanceAfter: user.points + redemption.points,
+      reason: `Refund for ${redemption.rewardName}: ${reason}`, createdAt: date(),
+    }, ...s.transactions],
+    logs: log(s, user, "POINTS_REFUNDED", `Refunded ${redemption.points} points for ${redemption.rewardName} (${reason})`),
+  };
+};
+const expireReservations = (s: State): State => {
+  const cutoff = now();
+  const expired = s.redemptions.filter((r) => r.status === "RESERVED" && r.reservedUntil && r.reservedUntil < cutoff);
+  if (!expired.length) return s;
+  return settleStock(expired.reduce(
+    (next, redemption) => closeRedemption(next, redemption, "EXPIRED", "Reservation timed out", systemActor),
+    s,
+  ));
+};
+
 type Shop = State & {
   saveAdminUser: (actorId: string, user: Omit<AdminUser, "id"> & { id?: string }) => string | null;
   setAdminUserActive: (actorId: string, userId: string, active: boolean) => string | null;
@@ -276,7 +626,7 @@ type Shop = State & {
   addToCart: (id: string, qty?: number) => void;
   checkout: (address: string, phone: string) => string | null;
   updateOrderStatus: (id: string, status: OrderStatus) => void;
-  redeem: (id: string) => string | null;
+  redeem: (id: string, variantId?: string) => string | null;
   adjustPoints: (
     userId: string,
     amount: number,
@@ -285,7 +635,7 @@ type Shop = State & {
   saveProduct: (product: Product) => void;
   deleteProduct: (id: string) => void;
   saveReward: (reward: Reward) => void;
-  deleteReward: (id: string) => void;
+  deleteReward: (id: string) => string | null;
   saveTier: (tier: Tier, rule: TierRule) => void;
   overrideTier: (
     userId: string,
@@ -308,31 +658,100 @@ type Shop = State & {
   }) => { error?: string; userId?: string };
   selectCustomer: (id: string) => void;
   recordLogin: (userId: string | null, adminUserId?: string) => void;
+  stockLevels: StockLevel[];
+  /** Redeemable units across active locations. */
+  availableFor: (rewardId: string, variantId?: string) => number;
+  stockItemFor: (rewardId: string) => StockItem;
+  stockAuthorityOf: (actorId: string) => StockAuthority | null;
+  receiveStock: (actorId: string, input: ReceiveInput) => string | null;
+  adjustStock: (actorId: string, input: AdjustInput) => string | null;
+  transferStock: (actorId: string, input: TransferInput) => string | null;
+  writeOffStock: (actorId: string, input: WriteOffInput) => string | null;
+  returnStock: (actorId: string, input: ReturnInput) => string | null;
+  fulfillRedemption: (actorId: string, id: string, method: "SHIPPED" | "PICKED_UP", serial?: string) => string | null;
+  cancelRedemption: (actorId: string, id: string, reason: string) => string | null;
+  extendReservation: (actorId: string, id: string, hours: number) => string | null;
+  saveStockItem: (actorId: string, item: StockItem) => string | null;
+  saveStockLocation: (actorId: string, location: StockLocation) => string | null;
+  saveSupplier: (actorId: string, supplier: Supplier) => string | null;
+  saveStockSettings: (actorId: string, settings: StockSettings) => string | null;
+  saveStockAuthority: (actorId: string, role: AdminRole, level: "clerk" | "manager") => string | null;
+  createStocktake: (actorId: string, locationId: string, category: string, note: string) => { id?: string; error?: string };
+  recordCount: (actorId: string, stocktakeId: string, line: number, counted: number | null) => string | null;
+  postStocktake: (actorId: string, id: string) => string | null;
+  cancelStocktake: (actorId: string, id: string) => string | null;
+  cancelMyRedemption: (id: string) => string | null;
+  requestRestock: (rewardId: string, variantId: string) => string | null;
+  dismissRestock: (id: string) => void;
 };
 const ShopContext = createContext<Shop | null>(null);
 
 export function ShopProvider({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<State>(() => {
+  const [state, setRawState] = useState<State>(() => {
     try {
       return restoreState(localStorage.getItem(key));
     } catch {
       return initial;
     }
   });
+  // Updates apply to this ref synchronously, so back-to-back mutations (a double-clicked
+  // redeem, two staff actions in one tick) each see the previous one's result.
+  const stateRef = useRef(state);
+  const savedRef = useRef<string | null>(null);
+  const persist = (next: State) => {
+    try {
+      const raw = JSON.stringify(next);
+      savedRef.current = raw;
+      localStorage.setItem(key, raw);
+    } catch {
+      /* storage may be unavailable */
+    }
+  };
+  const setState = useCallback((action: State | ((s: State) => State)) => {
+    const next = typeof action === "function" ? action(stateRef.current) : action;
+    if (next === stateRef.current) return;
+    stateRef.current = next;
+    persist(next);
+    setRawState(next);
+  }, []);
+  /**
+   * Runs a validated mutation against the latest state, including writes another tab made
+   * that have not arrived as a storage event yet. Returns the error, or null when applied.
+   */
+  const commit = useCallback((mutate: (s: State) => State | string): string | null => {
+    try {
+      const raw = localStorage.getItem(key);
+      if (raw && savedRef.current !== null && raw !== savedRef.current) {
+        savedRef.current = raw;
+        stateRef.current = restoreState(raw);
+        setRawState(stateRef.current);
+      }
+    } catch {
+      /* storage may be unavailable */
+    }
+    const result = mutate(stateRef.current);
+    if (typeof result === "string") return result;
+    setState(result);
+    return null;
+  }, [setState]);
   useEffect(() => {
+    persist(stateRef.current);
     const onStorage = (event: StorageEvent) => {
-      if (event.key === key && event.newValue) setState(restoreState(event.newValue));
+      if (event.key !== key || !event.newValue) return;
+      savedRef.current = event.newValue;
+      stateRef.current = restoreState(event.newValue);
+      setRawState(stateRef.current);
     };
     window.addEventListener("storage", onStorage);
     return () => window.removeEventListener("storage", onStorage);
   }, []);
   useEffect(() => {
-    try {
-      localStorage.setItem(key, JSON.stringify(state));
-    } catch {
-      /* storage may be unavailable */
-    }
-  }, [state]);
+    const tick = () => setState(expireReservations);
+    tick();
+    const timer = window.setInterval(tick, 30000);
+    return () => window.clearInterval(timer);
+  }, [setState]);
+  const stockLevels = useMemo(() => computeLevels(state.stockMovements), [state.stockMovements]);
   const currentUser =
     state.customers.find((c) => c.id === state.currentUserId) ??
     state.customers[0];
@@ -691,83 +1110,428 @@ export function ShopProvider({ children }: { children: ReactNode }) {
           }
           return next;
         }),
-      redeem: (id) => {
-        const reward = state.rewards.find((r) => r.id === id);
-        if (
-          !reward ||
-          !reward.active ||
-          (reward.expiresAt && reward.expiresAt < date())
-        )
-          return "Reward unavailable.";
-        if (reward.stock < 1) return "Reward is out of stock.";
-        if (
-          state.redemptions.some(
-            (r) => r.userId === currentUser.id && r.rewardId === id,
-          )
-        )
-          return "You already redeemed this reward.";
-        if (currentUser.points < reward.pointsCost)
-          return "Insufficient points.";
-        if (state.tiers[currentUser.tier].min < state.tiers[reward.minTier].min)
-          return `Requires ${reward.minTier} tier.`;
-        setState((s) => {
-          const user = s.customers.find((c) => c.id === currentUser.id)!;
-          const target = s.rewards.find((r) => r.id === id);
-          if (
-            !target ||
-            !target.active ||
-            (target.expiresAt && target.expiresAt < date()) ||
-            target.stock < 1 ||
-            user.points < target.pointsCost ||
-            s.tiers[user.tier].min < s.tiers[target.minTier].min ||
-            s.redemptions.some((r) => r.userId === user.id && r.rewardId === id)
-          )
-            return s;
+      redeem: (id, variantId = "") =>
+        commit((s) => {
+          const user = s.customers.find((c) => c.id === s.currentUserId);
+          const reward = s.rewards.find((r) => r.id === id);
+          if (!user) return "Sign in to redeem rewards.";
+          if (!reward || !reward.active || (reward.expiresAt && reward.expiresAt < date()))
+            return "Reward unavailable.";
+          const item = stockItemOf(s, id);
+          if (!variantIds(item).includes(variantId)) return "Choose an option for this reward.";
+          if (s.redemptions.some((r) => r.userId === user.id && r.rewardId === id && openRedemptionStatuses.includes(r.status)))
+            return "You already redeemed this reward.";
+          if (user.points < reward.pointsCost) return "Insufficient points.";
+          if (s.tiers[user.tier].min < s.tiers[reward.minTier].min)
+            return `Requires ${reward.minTier} tier.`;
+          // Reserve from the location holding the most redeemable stock. Points and stock change in one update.
+          const levels = computeLevels(s.stockMovements);
+          const best = activeLocationIds(s)
+            .map((locationId) => ({ locationId, qty: levels.find((l) => l.key === levelKey(id, variantId, locationId))?.available ?? 0 }))
+            .sort((a, b) => b.qty - a.qty)[0];
+          const inStock = !!best && best.qty > 0;
+          if (!inStock && !item.allowBackorder) return "Reward is out of stock.";
+          const rewardName = item.variants.length ? `${reward.name} (${variantLabel(item, variantId)})` : reward.name;
+          const redemption: Redemption = {
+            id: uid(), userId: user.id, rewardId: id, rewardName, points: reward.pointsCost, createdAt: date(), variantId,
+            status: inStock ? "RESERVED" : "BACKORDERED",
+            ...(inStock ? { locationId: best.locationId, reservedAt: now(), reservedUntil: reservationEnd(s) } : {}),
+          };
+          const next: State = {
+            ...s,
+            customers: s.customers.map((c) => c.id === user.id ? { ...c, points: c.points - reward.pointsCost } : c),
+            transactions: [{
+              id: uid(), userId: user.id, userName: user.name, type: "SPEND", points: -reward.pointsCost,
+              balanceBefore: user.points, balanceAfter: user.points - reward.pointsCost,
+              reason: `Redeemed: ${rewardName}`, createdAt: date(),
+            }, ...s.transactions],
+            redemptions: [redemption, ...s.redemptions],
+            logs: log(s, user, "REWARD_REDEEMED", `Redeemed ${rewardName} for ${reward.pointsCost} points${inStock ? "" : " (backordered)"}`),
+          };
+          return inStock
+            ? appendMovements(next, buildMovements(next, user, {
+                type: "RESERVE", rewardId: id, variantId, locationId: best.locationId, reference: redemption.id, reason: "Online redemption",
+              }, [{ qty: 0 }], 1, 1))
+            : next;
+        }),
+      cancelMyRedemption: (id) =>
+        commit((s) => {
+          const user = s.customers.find((c) => c.id === s.currentUserId);
+          const redemption = s.redemptions.find((r) => r.id === id && r.userId === user?.id);
+          if (!user || !redemption) return "Redemption not found.";
+          if (redemption.status !== "RESERVED" && redemption.status !== "BACKORDERED")
+            return "Only reserved or backordered redemptions can be cancelled.";
+          return settleStock(closeRedemption(s, redemption, "CANCELLED", "Cancelled by customer", user));
+        }),
+      requestRestock: (rewardId, variantId) =>
+        commit((s) => {
+          const user = s.customers.find((c) => c.id === s.currentUserId);
+          const reward = s.rewards.find((r) => r.id === rewardId);
+          if (!user || !reward) return "Reward not found.";
+          if (!variantIds(stockItemOf(s, rewardId)).includes(variantId)) return "Choose an option for this reward.";
+          if (s.restockRequests.some((r) => r.userId === user.id && r.rewardId === rewardId && r.variantId === variantId && !r.notifiedAt))
+            return "You will already be notified when this is back in stock.";
           return {
             ...s,
-            customers: s.customers.map((c) =>
-              c.id === user.id
-                ? { ...c, points: c.points - target.pointsCost }
-                : c,
-            ),
-            rewards: s.rewards.map((r) =>
-              r.id === id ? { ...r, stock: r.stock - 1 } : r,
-            ),
-            transactions: [
-              {
-                id: uid(),
-                userId: user.id,
-                userName: user.name,
-                type: "SPEND",
-                points: -target.pointsCost,
-                balanceBefore: user.points,
-                balanceAfter: user.points - target.pointsCost,
-                reason: `Redeemed: ${target.name}`,
-                createdAt: date(),
-              },
-              ...s.transactions,
-            ],
-            redemptions: [
-              {
-                id: uid(),
-                userId: user.id,
-                rewardId: id,
-                rewardName: target.name,
-                points: target.pointsCost,
-                createdAt: date(),
-              },
-              ...s.redemptions,
-            ],
-            logs: log(
-              s,
-              user,
-              "REWARD_REDEEMED",
-              `Redeemed ${target.name} for ${target.pointsCost} points`,
-            ),
+            restockRequests: [{ id: uid(), userId: user.id, rewardId, variantId, createdAt: now() }, ...s.restockRequests],
+            logs: log(s, user, "RESTOCK_REQUESTED", `Asked to be notified when ${reward.name} is back in stock`),
+          };
+        }),
+      dismissRestock: (id) =>
+        setState((s) => ({ ...s, restockRequests: s.restockRequests.filter((r) => !(r.id === id && r.userId === s.currentUserId)) })),
+      stockLevels,
+      availableFor: (rewardId, variantId) =>
+        totalsFor(stockLevels, { rewardId, variantId, locationIds: activeLocationIds(state) }).available,
+      stockItemFor: (rewardId) => stockItemOf(state, rewardId),
+      stockAuthorityOf: (actorId) => {
+        const actor = state.adminUsers.find((user) => user.id === actorId && user.active);
+        return actor ? authorityFor(state, actor.role) : null;
+      },
+      receiveStock: (actorId, input) =>
+        commit((s) => {
+          const actor = stockActor(s, actorId, "clerk");
+          if (typeof actor === "string") return actor;
+          const checked = checkLine(s, input, true);
+          if (typeof checked === "string") return checked;
+          if (input.supplierId && !s.suppliers.some((x) => x.id === input.supplierId)) return "Choose a valid supplier or partner.";
+          if (!Number.isFinite(input.unitCost) || input.unitCost < 0) return "Enter a unit cost of zero or more.";
+          const parts = resolveIn(s, computeLevels(s.stockMovements), checked.item, input);
+          if (typeof parts === "string") return parts;
+          let next = appendMovements(s, buildMovements(s, actor, {
+            type: "RECEIVE", rewardId: input.rewardId, variantId: input.variantId, locationId: input.locationId,
+            supplierId: input.supplierId || undefined, source: input.source, unitCost: input.unitCost,
+            reference: input.reference.trim() || undefined,
+            reason: input.note.trim() || (input.source === "DONATION" ? "Partner donation" : "Purchase receipt"),
+          }, parts, 1));
+          next = { ...next, logs: staffLog(next, actor, "STOCK_RECEIVED", `Received ${describeLine(s, input, input.qty)} at ${locationName(s, input.locationId)}`) };
+          return settleStock(next);
+        }),
+      adjustStock: (actorId, input) =>
+        commit((s) => {
+          const actor = stockActor(s, actorId, "manager");
+          if (typeof actor === "string") return actor;
+          if (!input.reason.trim()) return "A reason is required for manual adjustments.";
+          const checked = checkLine(s, input, input.direction === "in");
+          if (typeof checked === "string") return checked;
+          const levels = computeLevels(s.stockMovements);
+          const parts = input.direction === "in"
+            ? resolveIn(s, levels, checked.item, input)
+            : resolveOut(levels.find((l) => l.key === levelKey(input.rewardId, input.variantId, input.locationId)), checked.item, input, "available");
+          if (typeof parts === "string") return parts;
+          let next = appendMovements(s, buildMovements(s, actor, {
+            type: "ADJUST", rewardId: input.rewardId, variantId: input.variantId, locationId: input.locationId, reason: input.reason.trim(),
+          }, parts, input.direction === "in" ? 1 : -1));
+          next = { ...next, logs: staffLog(next, actor, "STOCK_ADJUSTED", `${input.direction === "in" ? "+" : "−"}${describeLine(s, input, input.qty)} at ${locationName(s, input.locationId)}: ${input.reason.trim()}`) };
+          return settleStock(next);
+        }),
+      transferStock: (actorId, input) =>
+        commit((s) => {
+          const actor = stockActor(s, actorId, "clerk");
+          if (typeof actor === "string") return actor;
+          const checked = checkLine(s, input, false);
+          if (typeof checked === "string") return checked;
+          const to = s.stockLocations.find((l) => l.id === input.toLocationId);
+          if (!to || !to.active) return "Choose an active destination.";
+          if (to.id === input.locationId) return "Choose a different destination.";
+          const parts = resolveOut(computeLevels(s.stockMovements).find((l) => l.key === levelKey(input.rewardId, input.variantId, input.locationId)), checked.item, input, "available");
+          if (typeof parts === "string") return parts;
+          const reference = `TRF-${uid().slice(0, 8).toUpperCase()}`;
+          const reason = input.note.trim() || `Transfer to ${to.name}`;
+          const base = { rewardId: input.rewardId, variantId: input.variantId, reference, reason };
+          let next = appendMovements(s, [
+            ...buildMovements(s, actor, { ...base, type: "TRANSFER_OUT", locationId: input.locationId }, parts, -1),
+            ...buildMovements(s, actor, { ...base, type: "TRANSFER_IN", locationId: to.id }, parts, 1),
+          ]);
+          next = { ...next, logs: staffLog(next, actor, "STOCK_TRANSFERRED", `Moved ${describeLine(s, input, input.qty)} from ${locationName(s, input.locationId)} to ${to.name} (${reference})`) };
+          return settleStock(next);
+        }),
+      writeOffStock: (actorId, input) =>
+        commit((s) => {
+          const actor = stockActor(s, actorId, "manager");
+          if (typeof actor === "string") return actor;
+          if (!input.reason.trim()) return "A reason is required for write-offs.";
+          if (!["DAMAGE", "LOSS", "EXPIRY"].includes(input.kind)) return "Choose a write-off type.";
+          const checked = checkLine(s, input, false);
+          if (typeof checked === "string") return checked;
+          const parts = resolveOut(computeLevels(s.stockMovements).find((l) => l.key === levelKey(input.rewardId, input.variantId, input.locationId)), checked.item, input, input.kind === "EXPIRY" ? "expired" : "available");
+          if (typeof parts === "string") return parts;
+          const next = appendMovements(s, buildMovements(s, actor, {
+            type: input.kind, rewardId: input.rewardId, variantId: input.variantId, locationId: input.locationId, reason: input.reason.trim(),
+          }, parts, -1));
+          return { ...next, logs: staffLog(next, actor, "STOCK_WRITTEN_OFF", `${input.kind.toLowerCase()} write-off of ${describeLine(s, input, input.qty)} at ${locationName(s, input.locationId)}: ${input.reason.trim()}`) };
+        }),
+      returnStock: (actorId, input) =>
+        commit((s) => {
+          const actor = stockActor(s, actorId, "clerk");
+          if (typeof actor === "string") return actor;
+          if (!input.reason.trim()) return "A reason is required for returns.";
+          const redemption = input.redemptionId ? s.redemptions.find((r) => r.id === input.redemptionId) : undefined;
+          if (input.redemptionId && redemption?.status !== "FULFILLED") return "Only fulfilled redemptions can be returned.";
+          if (input.refundPoints && (!redemption || stockAuthorityRank[authorityFor(s, actor.role)] < stockAuthorityRank.manager))
+            return "Refunding points needs stock manager authority and a linked redemption.";
+          const line: StockLineInput = redemption
+            ? { rewardId: redemption.rewardId, variantId: redemption.variantId, locationId: input.locationId, qty: 1,
+                batch: redemption.batch ?? input.batch, serials: redemption.serial ? [redemption.serial] : input.serials }
+            : input;
+          const checked = checkLine(s, line, true);
+          if (typeof checked === "string") return checked;
+          const parts = resolveIn(s, computeLevels(s.stockMovements), checked.item, line);
+          if (typeof parts === "string") return parts;
+          let next = appendMovements(s, buildMovements(s, actor, {
+            type: "RETURN", rewardId: line.rewardId, variantId: line.variantId, locationId: line.locationId,
+            reference: redemption?.id, reason: input.reason.trim(),
+          }, parts, 1));
+          if (redemption) {
+            if (input.refundPoints) next = refundPoints(next, redemption, "Returned to stock");
+            next = { ...next, redemptions: next.redemptions.map((r) => r.id === redemption.id ? { ...r, status: "RETURNED", closedAt: now(), closeReason: input.reason.trim() } : r) };
+          }
+          next = { ...next, logs: staffLog(next, actor, "STOCK_RETURNED", `Returned ${describeLine(s, line, line.qty)} to ${locationName(s, line.locationId)}${redemption ? ` from redemption by ${s.customers.find((c) => c.id === redemption.userId)?.name ?? redemption.userId}` : ""}`) };
+          return settleStock(next);
+        }),
+      fulfillRedemption: (actorId, id, method, serial) =>
+        commit((s) => {
+          const actor = stockActor(s, actorId, "clerk");
+          if (typeof actor === "string") return actor;
+          const redemption = s.redemptions.find((r) => r.id === id);
+          if (!redemption || redemption.status !== "RESERVED" || !redemption.locationId)
+            return "Only reserved redemptions can be fulfilled.";
+          const line = { rewardId: redemption.rewardId, variantId: redemption.variantId, locationId: redemption.locationId, qty: 1, serials: serial ? [serial] : [] };
+          const parts = resolveOut(computeLevels(s.stockMovements).find((l) => l.key === levelKey(line.rewardId, line.variantId, line.locationId)), stockItemOf(s, line.rewardId), line, "reserved");
+          if (typeof parts === "string") return parts;
+          const next = appendMovements(s, buildMovements(s, actor, {
+            type: "FULFILL", ...line, reference: redemption.id, reason: method === "SHIPPED" ? "Shipped to customer" : "Picked up by customer",
+          }, parts, -1, -1));
+          const customer = s.customers.find((c) => c.id === redemption.userId)?.name ?? redemption.userId;
+          return {
+            ...next,
+            redemptions: next.redemptions.map((r) => r.id === id
+              ? { ...r, status: "FULFILLED", fulfilledAt: now(), fulfillment: method, batch: parts[0].batch, serial: parts[0].serials?.[0] }
+              : r),
+            logs: staffLog(next, actor, "REDEMPTION_FULFILLED", `${method === "SHIPPED" ? "Shipped" : "Handed over"} ${redemption.rewardName} to ${customer}`),
+          };
+        }),
+      cancelRedemption: (actorId, id, reason) =>
+        commit((s) => {
+          const actor = stockActor(s, actorId, "manager");
+          if (typeof actor === "string") return actor;
+          if (!reason.trim()) return "A reason is required to cancel a redemption.";
+          const redemption = s.redemptions.find((r) => r.id === id);
+          if (!redemption || (redemption.status !== "RESERVED" && redemption.status !== "BACKORDERED"))
+            return "Only reserved or backordered redemptions can be cancelled.";
+          const next = closeRedemption(s, redemption, "CANCELLED", reason.trim(), actor);
+          return settleStock({ ...next, logs: staffLog(next, actor, "REDEMPTION_CANCELLED", `Cancelled ${redemption.rewardName}: ${reason.trim()}`) });
+        }),
+      extendReservation: (actorId, id, hours) =>
+        commit((s) => {
+          const actor = stockActor(s, actorId, "clerk");
+          if (typeof actor === "string") return actor;
+          if (!Number.isInteger(hours) || hours < 1 || hours > 168) return "Extend by 1 to 168 hours.";
+          const redemption = s.redemptions.find((r) => r.id === id);
+          if (!redemption || redemption.status !== "RESERVED") return "Only reserved redemptions can be extended.";
+          const from = Math.max(Date.now(), new Date(redemption.reservedUntil ?? 0).getTime());
+          const reservedUntil = new Date(from + hours * 3600000).toISOString();
+          return {
+            ...s,
+            redemptions: s.redemptions.map((r) => r.id === id ? { ...r, reservedUntil } : r),
+            logs: staffLog(s, actor, "RESERVATION_EXTENDED", `Extended ${redemption.rewardName} reservation by ${hours}h`),
+          };
+        }),
+      saveStockItem: (actorId, item) =>
+        commit((s) => {
+          const actor = stockActor(s, actorId, "manager");
+          if (typeof actor === "string") return actor;
+          const reward = s.rewards.find((r) => r.id === item.rewardId);
+          if (!reward) return "Reward not found.";
+          const sku = item.sku.trim().toUpperCase();
+          if (!sku) return "Enter a SKU.";
+          if (Object.values(s.stockItems).some((other) => other.rewardId !== item.rewardId && s.rewards.some((r) => r.id === other.rewardId) && other.sku.toUpperCase() === sku))
+            return "Another reward already uses that SKU.";
+          if (!Number.isFinite(item.unitCost) || item.unitCost < 0) return "Enter a unit cost of zero or more.";
+          if (![item.lowStockThreshold, item.reorderPoint].every((n) => Number.isInteger(n) && n >= 0) || !Number.isInteger(item.reorderQty) || item.reorderQty < 1)
+            return "Thresholds must be whole numbers, and reorder quantity at least 1.";
+          if (item.supplierId && !s.suppliers.some((x) => x.id === item.supplierId)) return "Choose a valid supplier.";
+          const variants = item.variants.map((v, index) => ({
+            id: v.id, size: v.size.trim(), color: v.color.trim(), sku: v.sku.trim().toUpperCase() || `${sku}-${index + 1}`,
+          }));
+          if (variants.some((v) => !v.size && !v.color)) return "Each variant needs a size or colour.";
+          if (new Set(variants.map((v) => v.id)).size !== variants.length || new Set(variants.map((v) => v.sku)).size !== variants.length)
+            return "Variant SKUs must be unique.";
+          const old = stockItemOf(s, item.rewardId);
+          const levels = computeLevels(s.stockMovements).filter((l) => l.rewardId === item.rewardId);
+          const held = (variantId: string) =>
+            levels.some((l) => l.variantId === variantId && (l.onHand !== 0 || l.reserved !== 0)) ||
+            s.redemptions.some((r) => r.rewardId === item.rewardId && r.variantId === variantId && (r.status === "RESERVED" || r.status === "BACKORDERED"));
+          const kept = variantIds({ ...old, variants });
+          const dropped = variantIds(old).find((id) => !kept.includes(id) && held(id));
+          if (dropped !== undefined)
+            return `${variantLabel(old, dropped)} still has stock or open redemptions. Move it to zero first.`;
+          if (item.tracking !== old.tracking && levels.some((l) => l.onHand !== 0 || l.reserved !== 0))
+            return "Tracking can only change while the item has no stock on hand or reserved.";
+          const saved: StockItem = { ...item, sku, variants };
+          return settleStock({
+            ...s,
+            stockItems: { ...s.stockItems, [item.rewardId]: saved },
+            logs: staffLog(s, actor, "STOCK_ITEM_UPDATED", `Updated stock settings for ${reward.name} [${sku}]`),
+          });
+        }),
+      saveStockLocation: (actorId, location) =>
+        commit((s) => {
+          const actor = stockActor(s, actorId, "manager");
+          if (typeof actor === "string") return actor;
+          const name = location.name.trim();
+          if (!name) return "Enter a location name.";
+          if (!["warehouse", "store", "pickup"].includes(location.type)) return "Choose a location type.";
+          const existing = s.stockLocations.find((l) => l.id === location.id);
+          if (existing?.active && !location.active) {
+            const totals = totalsFor(computeLevels(s.stockMovements), { locationId: location.id });
+            if (totals.onHand || totals.reserved) return "Transfer or write off this location's stock before deactivating it.";
+            if (s.stockLocations.filter((l) => l.active).length < 2) return "Keep at least one active location.";
+          }
+          const saved: StockLocation = { ...location, id: location.id || `loc-${uid().slice(0, 8)}`, name, nameKh: location.nameKh.trim() };
+          return settleStock({
+            ...s,
+            stockLocations: existing ? s.stockLocations.map((l) => l.id === saved.id ? saved : l) : [...s.stockLocations, saved],
+            logs: staffLog(s, actor, existing ? "LOCATION_UPDATED" : "LOCATION_CREATED", `${existing ? "Updated" : "Created"} stock location ${name}`),
+          });
+        }),
+      saveSupplier: (actorId, supplier) =>
+        commit((s) => {
+          const actor = stockActor(s, actorId, "manager");
+          if (typeof actor === "string") return actor;
+          const name = supplier.name.trim();
+          const email = supplier.email.trim();
+          if (!name) return "Enter a supplier or partner name.";
+          if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return "Enter a valid email address.";
+          const existing = s.suppliers.some((x) => x.id === supplier.id);
+          const saved: Supplier = { ...supplier, id: supplier.id || `sup-${uid().slice(0, 8)}`, name, email, contact: supplier.contact.trim(), phone: supplier.phone.trim() };
+          return {
+            ...s,
+            suppliers: existing ? s.suppliers.map((x) => x.id === saved.id ? saved : x) : [...s.suppliers, saved],
+            logs: staffLog(s, actor, existing ? "SUPPLIER_UPDATED" : "SUPPLIER_CREATED", `${existing ? "Updated" : "Added"} ${saved.kind} ${name}`),
+          };
+        }),
+      saveStockSettings: (actorId, settings) =>
+        commit((s) => {
+          const actor = stockActor(s, actorId, "admin");
+          if (typeof actor === "string") return actor;
+          if (!Number.isInteger(settings.reservationHours) || settings.reservationHours < 1 || settings.reservationHours > 720)
+            return "Reservation timeout must be 1 to 720 hours.";
+          return {
+            ...s,
+            stockSettings: { ...s.stockSettings, reservationHours: settings.reservationHours },
+            logs: staffLog(s, actor, "STOCK_SETTINGS_UPDATED", `Reservation timeout set to ${settings.reservationHours}h`),
+          };
+        }),
+      saveStockAuthority: (actorId, role, level) =>
+        commit((s) => {
+          const actor = s.adminUsers.find((user) => user.id === actorId && user.active);
+          if (actor?.role !== "super_admin") return "Only Super Admin can change stock authority.";
+          if (role === "super_admin") return "Super Admin always has stock admin authority.";
+          if (!Object.prototype.hasOwnProperty.call(s.roleLabels, role)) return "Role not found.";
+          if (level !== "clerk" && level !== "manager") return "Choose clerk or manager.";
+          return {
+            ...s,
+            stockAuthority: { ...s.stockAuthority, [role]: level },
+            logs: staffLog(s, actor, "STOCK_AUTHORITY_UPDATED", `${s.roleLabels[role]} stock authority set to ${level}`),
+          };
+        }),
+      createStocktake: (actorId, locationId, category, note) => {
+        let id = "";
+        const error = commit((s) => {
+          const actor = stockActor(s, actorId, "clerk");
+          if (typeof actor === "string") return actor;
+          const location = s.stockLocations.find((l) => l.id === locationId);
+          if (!location?.active) return "Choose an active location.";
+          if (s.stocktakes.some((t) => t.locationId === locationId && t.status === "OPEN"))
+            return `${location.name} already has an open stocktake.`;
+          const levels = computeLevels(s.stockMovements).filter((l) => l.locationId === locationId);
+          const lines: StocktakeLine[] = [];
+          for (const reward of s.rewards.filter((r) => !category || r.category === category)) {
+            const item = stockItemOf(s, reward.id);
+            for (const variantId of variantIds(item)) {
+              const level = levels.find((l) => l.rewardId === reward.id && l.variantId === variantId);
+              const base = { rewardId: reward.id, variantId, counted: null };
+              if (item.tracking === "batch")
+                for (const b of level?.batches ?? []) lines.push({ ...base, batch: b.batch, expected: b.onHand });
+              else if (item.tracking === "serial")
+                for (const serial of level?.serials ?? []) lines.push({ ...base, batch: "", serial, expected: 1 });
+              else if (level || reward.active) lines.push({ ...base, batch: "", expected: level?.onHand ?? 0 });
+            }
+          }
+          if (!lines.length) return "Nothing to count at this location for that category.";
+          id = `ST-${uid().slice(0, 6).toUpperCase()}`;
+          return {
+            ...s,
+            stocktakes: [{ id, locationId, category, status: "OPEN", note: note.trim(), createdAt: now(), createdBy: actor.name, lines }, ...s.stocktakes],
+            logs: staffLog(s, actor, "STOCKTAKE_STARTED", `Started stocktake ${id} at ${location.name}${category ? ` (${category})` : ""}`),
           };
         });
-        return null;
+        return error ? { error } : { id };
       },
+      recordCount: (actorId, stocktakeId, index, counted) =>
+        commit((s) => {
+          const actor = stockActor(s, actorId, "clerk");
+          if (typeof actor === "string") return actor;
+          const take = s.stocktakes.find((t) => t.id === stocktakeId);
+          if (!take || take.status !== "OPEN") return "This stocktake is closed.";
+          const line = take.lines[index];
+          if (!line) return "Count line not found.";
+          if (counted !== null && (!Number.isInteger(counted) || counted < 0 || counted > 100000 || (line.serial && counted > 1)))
+            return line.serial ? "Serial lines are counted as 0 or 1." : "Enter a whole count of zero or more.";
+          return {
+            ...s,
+            stocktakes: s.stocktakes.map((t) => t.id === stocktakeId
+              ? { ...t, lines: t.lines.map((l, i) => i === index ? { ...l, counted } : l) }
+              : t),
+          };
+        }),
+      postStocktake: (actorId, id) =>
+        commit((s) => {
+          const actor = stockActor(s, actorId, "manager");
+          if (typeof actor === "string") return actor;
+          const take = s.stocktakes.find((t) => t.id === id);
+          if (!take || take.status !== "OPEN") return "Only open stocktakes can be posted.";
+          if (take.lines.some((l) => l.counted === null)) return "Count every line before posting.";
+          const levels = computeLevels(s.stockMovements);
+          const movements: StockMovement[] = [];
+          const lines: StocktakeLine[] = [];
+          for (const line of take.lines) {
+            const level = levels.find((l) => l.key === levelKey(line.rewardId, line.variantId, take.locationId));
+            const system = line.serial
+              ? (level?.serials.includes(line.serial) ? 1 : 0)
+              : line.batch
+                ? (level?.batches.find((b) => b.batch === line.batch)?.onHand ?? 0)
+                : (level?.onHand ?? 0);
+            lines.push({ ...line, systemAtPost: system });
+            const variance = (line.counted ?? 0) - system;
+            if (!variance) continue;
+            if (line.serial && variance > 0 && levels.some((l) => l.rewardId === line.rewardId && l.serials.includes(line.serial!)))
+              return `Serial ${line.serial} is recorded at another location. Transfer it instead.`;
+            movements.push(...buildMovements(s, actor, {
+              type: "COUNT", rewardId: line.rewardId, variantId: line.variantId, locationId: take.locationId,
+              reference: take.id, reason: `Stocktake ${take.id} variance`,
+            }, [{ qty: Math.abs(variance), batch: line.batch || undefined, serials: line.serial ? [line.serial] : undefined }], variance > 0 ? 1 : -1));
+          }
+          const units = movements.reduce((sum, m) => sum + m.onHand, 0);
+          const next = appendMovements(s, movements);
+          return settleStock({
+            ...next,
+            stocktakes: next.stocktakes.map((t) => t.id === id ? { ...t, status: "POSTED", postedAt: now(), postedBy: actor.name, lines } : t),
+            logs: staffLog(next, actor, "STOCKTAKE_POSTED", `Posted stocktake ${id}: ${movements.length} variance line${movements.length === 1 ? "" : "s"}, net ${units > 0 ? "+" : ""}${units} units`),
+          });
+        }),
+      cancelStocktake: (actorId, id) =>
+        commit((s) => {
+          const actor = stockActor(s, actorId, "manager");
+          if (typeof actor === "string") return actor;
+          const take = s.stocktakes.find((t) => t.id === id);
+          if (!take || take.status !== "OPEN") return "Only open stocktakes can be cancelled.";
+          return {
+            ...s,
+            stocktakes: s.stocktakes.map((t) => t.id === id ? { ...t, status: "CANCELLED" } : t),
+            logs: staffLog(s, actor, "STOCKTAKE_CANCELLED", `Cancelled stocktake ${id}`),
+          };
+        }),
       adjustPoints: (userId, amount, reason) => {
         const user = state.customers.find((c) => c.id === userId);
         if (
@@ -826,12 +1590,20 @@ export function ShopProvider({ children }: { children: ReactNode }) {
           rewards: s.rewards.some((r) => r.id === reward.id)
             ? s.rewards.map((r) => (r.id === reward.id ? reward : r))
             : [reward, ...s.rewards],
+          stockItems: s.stockItems[reward.id] ? s.stockItems : { ...s.stockItems, [reward.id]: defaultStockItem(reward) },
         })),
       deleteReward: (id) =>
-        setState((s) => ({
-          ...s,
-          rewards: s.rewards.filter((r) => r.id !== id),
-        })),
+        commit((s) => {
+          const totals = totalsFor(computeLevels(s.stockMovements), { rewardId: id });
+          if (totals.onHand || totals.reserved) return "Write off or transfer this reward's stock to zero before deleting it.";
+          if (s.redemptions.some((r) => r.rewardId === id && (r.status === "RESERVED" || r.status === "BACKORDERED")))
+            return "This reward has open redemptions. Fulfil or cancel them first.";
+          return {
+            ...s,
+            rewards: s.rewards.filter((r) => r.id !== id),
+            restockRequests: s.restockRequests.filter((r) => r.rewardId !== id),
+          };
+        }),
       saveTier: (tier, rule) =>
         setState((s) => {
           const tiers = { ...s.tiers, [tier]: rule };
@@ -1006,7 +1778,7 @@ export function ShopProvider({ children }: { children: ReactNode }) {
         return { ...s, logs: [entry, ...s.logs] };
       }),
     }),
-    [state, currentUser],
+    [state, currentUser, stockLevels, commit, setState],
   );
   return <ShopContext.Provider value={shop}>{children}</ShopContext.Provider>;
 }

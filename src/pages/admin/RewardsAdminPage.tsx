@@ -23,7 +23,7 @@ const blank = (): Reward => ({
 const field =
   "w-full rounded-lg border border-[var(--border)] bg-[var(--secondary)] px-3 py-2"
 export function AdminRewardsPage() {
-  const { rewards, saveReward, deleteReward } = useShop()
+  const { rewards, saveReward, deleteReward, availableFor, stockItemFor } = useShop()
   const { notify, confirm } = useFeedback()
   const [editing, setEditing, modalClosing] = useModalState<Reward | null>(null)
   const [previewId, setPreviewId, previewClosing] = useModalState<string | null>(null)
@@ -33,13 +33,8 @@ export function AdminRewardsPage() {
     setEditing((r) => (r ? { ...r, [key]: value } : r))
   const save = (e: FormEvent) => {
     e.preventDefault()
-    if (
-      !editing ||
-      !editing.name.trim() ||
-      editing.pointsCost < 1 ||
-      editing.stock < 0
-    ) {
-      setError("Enter a name, positive point cost, and valid stock.")
+    if (!editing || !editing.name.trim() || editing.pointsCost < 1) {
+      setError("Enter a name and a positive point cost.")
       return
     }
     saveReward({
@@ -112,17 +107,9 @@ export function AdminRewardsPage() {
                   onChange={(e) => change("pointsCost", Number(e.target.value))}
                 />
               </label>
-              <label className="text-xs">
-                Stock
-                <input
-                  required
-                  min="0"
-                  type="number"
-                  className={field}
-                  value={editing.stock}
-                  onChange={(e) => change("stock", Number(e.target.value))}
-                />
-              </label>
+              <p className="self-end pb-2 text-xs text-[var(--muted-foreground)]">
+                Stock is managed in Inventory → Stock Levels.
+              </p>
               <label className="text-xs">
                 Minimum tier
                 <select
@@ -211,8 +198,9 @@ export function AdminRewardsPage() {
                 {r.description}
               </p>
               <p className="text-sm text-[var(--gold-mid)]">
-                {r.pointsCost} pts Â· {r.stock} in stock Â·{" "}
+                {r.pointsCost} pts · {availableFor(r.id)} available ·{" "}
                 {r.active ? "Active" : "Inactive"}
+                <span className="block font-mono-data text-xs text-[var(--muted-foreground)]">{stockItemFor(r.id).sku}</span>
               </p>
               <div className="flex items-center gap-2 text-sm">
                 <ActionIconButton action="edit" label={`Edit ${r.name}`} onClick={() => setEditing(r)} />
@@ -232,10 +220,9 @@ export function AdminRewardsPage() {
                   label={`Delete ${r.name}`}
                   onClick={() => {
                     void confirm(`Delete ${r.name}?`).then((ok) => {
-                      if (ok) {
-                        deleteReward(r.id)
-                        notify(`${r.name} deleted.`, "success")
-                      }
+                      if (!ok) return
+                      const result = deleteReward(r.id)
+                      notify(result ?? `${r.name} deleted.`, result ? "error" : "success")
                     })
                   }}
                 />

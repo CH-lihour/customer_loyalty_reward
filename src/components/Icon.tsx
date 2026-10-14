@@ -30,6 +30,12 @@ const shapes: Record<string, ReactNode> = {
   trash: <><path d="M4 7h16M9 7V4h6v3m3 0-1 13H7L6 7m4 4v5m4-5v5"/></>,
   edit: <><path d="m15 5 4 4M4 20l4.5-1 11-11a2.1 2.1 0 0 0-3-3l-11 11L4 20Z"/></>,
   pause: <><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></>,
+  warehouse: <><path d="M3 21V8l9-5 9 5v13"/><path d="M7 21v-8h10v8M7 17h10"/></>,
+  truck: <><path d="M2 6h12v10H2V6Zm12 4h4l3 3v3h-7"/><circle cx="6" cy="18" r="2"/><circle cx="17" cy="18" r="2"/></>,
+  clipboard: <><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3h6v1M9 12l2 2 4-4M9 17h6"/></>,
+  alert: <><path d="M12 3 2 20h20L12 3Z"/><path d="M12 10v4m0 3h.01"/></>,
+  swap: <><path d="M7 4 3 8l4 4M3 8h14M17 20l4-4-4-4M21 16H7"/></>,
+  supplier: <><path d="M4 21V5l8-2v18M12 7l8 2v12M2 21h20M8 9v.01M8 13v.01M16 13v.01M16 17v.01"/></>,
 };
 
 const legacy: Record<string, string> = {

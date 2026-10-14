@@ -21,6 +21,13 @@ const navItems: {
   { id: "rewards", label: "Rewards", icon: "gift", group: "Loyalty" },
   { id: "badges", label: "Badges", icon: "medal", group: "Loyalty" },
   { id: "referrals", label: "Referrals", icon: "users", group: "Loyalty" },
+  { id: "stock-alerts", label: "Low Stock", icon: "alert", group: "Inventory" },
+  { id: "stock", label: "Stock Levels", icon: "warehouse", group: "Inventory" },
+  { id: "stock-movements", label: "Movements", icon: "swap", group: "Inventory" },
+  { id: "fulfillment", label: "Fulfilment", icon: "truck", group: "Inventory" },
+  { id: "stocktake", label: "Stocktake", icon: "clipboard", group: "Inventory" },
+  { id: "stock-reports", label: "Stock Reports", icon: "chart", group: "Inventory" },
+  { id: "suppliers", label: "Suppliers", icon: "supplier", group: "Inventory" },
   { id: "logs", label: "Activity Logs", icon: "list", group: "System" },
   { id: "exchange-rate", label: "Exchange Rate", icon: "wallet", group: "System" },
   { id: "users", label: "User Management", icon: "users", group: "System" },
@@ -39,7 +46,7 @@ interface Props {
 }
 
 export function AdminLayout({ page, onNav, onLogout, allowedPages, userName, userRoleLabel, children }: Props) {
-  const groups = ["Overview", "E-Commerce", "Loyalty", "System", "Account"];
+  const groups = ["Overview", "E-Commerce", "Loyalty", "Inventory", "System", "Account"];
 
   return (
     <div className="min-h-screen flex bg-[var(--background)]">
