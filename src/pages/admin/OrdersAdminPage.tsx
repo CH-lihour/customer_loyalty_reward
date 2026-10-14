@@ -3,6 +3,7 @@ import { useShop } from "../../data/shop"
 import { useFeedback } from "../../components/FeedbackProvider"
 import type { OrderStatus } from "../../data/mockData"
 import { AdminModal } from "../../components/AdminModal"
+import { useModalState } from "../../components/useModalState"
 
 const statuses: OrderStatus[] = [
   "PENDING",
@@ -33,7 +34,7 @@ export function AdminOrdersPage() {
   const { orders, updateOrderStatus } = useShop()
   const { notify } = useFeedback()
   const [filter, setFilter] = useState<"All" | OrderStatus>("All")
-  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editingId, setEditingId, modalClosing] = useModalState<string | null>(null)
   const [nextStatus, setNextStatus] = useState<OrderStatus>("PENDING")
   const editingOrder = orders.find((order) => order.id === editingId)
 
@@ -138,6 +139,7 @@ export function AdminOrdersPage() {
       </div>
       {editingOrder && (
         <AdminModal
+          closing={modalClosing}
           title={`Change status for ${editingOrder.id}`}
           onClose={() => setEditingId(null)}
         >

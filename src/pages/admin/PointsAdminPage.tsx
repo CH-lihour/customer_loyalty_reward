@@ -2,6 +2,7 @@ import { useState } from "react"
 import { useShop } from "../../data/shop"
 import { useFeedback } from "../../components/FeedbackProvider"
 import { AdminModal } from "../../components/AdminModal"
+import { useModalState } from "../../components/useModalState"
 
 export function AdminPointsPage() {
   const {
@@ -10,7 +11,7 @@ export function AdminPointsPage() {
     adjustPoints: applyAdjustment,
   } = useShop()
   const { notify } = useFeedback()
-  const [showAdjust, setShowAdjust] = useState(false)
+  const [showAdjust, setShowAdjust, modalClosing] = useModalState<boolean>(false)
   const [adjustUserId, setAdjustUserId] = useState("u1")
   const [adjustPoints, setAdjustPoints] = useState("")
   const [adjustReason, setAdjustReason] = useState("")
@@ -52,6 +53,7 @@ export function AdminPointsPage() {
 
       {showAdjust && (
         <AdminModal
+          closing={modalClosing}
           title="Manual Point Adjustment"
           onClose={() => setShowAdjust(false)}
         >

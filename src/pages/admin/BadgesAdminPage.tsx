@@ -3,6 +3,7 @@ import { type Badge } from "../../data/mockData"
 import { useShop } from "../../data/shop"
 import { useFeedback } from "../../components/FeedbackProvider"
 import { AdminModal } from "../../components/AdminModal"
+import { useModalState } from "../../components/useModalState"
 import { ActionIconButton } from "../../components/ActionIconButton"
 import { Icon, iconName } from "../../components/Icon"
 const blank = (): Badge => ({
@@ -21,7 +22,7 @@ const field =
 export function AdminBadgesPage() {
   const { badges, customers, saveBadge, deleteBadge } = useShop()
   const { notify, confirm } = useFeedback()
-  const [editing, setEditing] = useState<Badge | null>(null)
+  const [editing, setEditing, modalClosing] = useModalState<Badge | null>(null)
   const [error, setError] = useState("")
   const change = <K extends keyof Badge>(key: K, value: Badge[K]) =>
     setEditing((b) => (b ? { ...b, [key]: value } : b))
@@ -58,6 +59,7 @@ export function AdminBadgesPage() {
       </div>
       {editing && (
         <AdminModal
+          closing={modalClosing}
           title={editing.id ? "Edit Badge" : "New Badge"}
           onClose={() => {
             setEditing(null)

@@ -28,6 +28,7 @@ import {
 import { extraCustomers, extraProducts } from "./seedExtras";
 import {
   adminPages,
+  defaultAdminRoleLabels,
   defaultRolePermissions,
   initialAdminUsers,
   type AdminPage,
@@ -83,6 +84,7 @@ export type TierRule = {
 };
 type State = {
   adminUsers: AdminUser[];
+  roleLabels: Record<AdminRole, string>;
   rolePermissions: Record<AdminRole, AdminPage[]>;
   disabledCustomerIds: string[];
   customers: Customer[];
@@ -107,6 +109,7 @@ type State = {
 
 const initial: State = {
   adminUsers: initialAdminUsers,
+  roleLabels: defaultAdminRoleLabels,
   rolePermissions: defaultRolePermissions,
   disabledCustomerIds: [],
   customers: [...customers, ...extraCustomers],
@@ -145,6 +148,19 @@ function restoreState(saved: string | null): State {
     const parsed = JSON.parse(saved) as Partial<State>;
     const tiers = { ...initial.tiers, ...parsed.tiers };
     tiers.Platinum = { ...tiers.Platinum, max: Infinity };
+    const roleLabels = { ...defaultAdminRoleLabels };
+    for (const [id, label] of Object.entries(parsed.roleLabels ?? {})) {
+      if (id.startsWith("role-") && typeof label === "string" && label.trim())
+        roleLabels[id] = label.trim();
+    }
+    const rolePermissions = { ...defaultRolePermissions };
+    for (const [id, pages] of Object.entries(parsed.rolePermissions ?? {})) {
+      if (id === "super_admin" || !Object.prototype.hasOwnProperty.call(roleLabels, id) || !Array.isArray(pages)) continue;
+      rolePermissions[id] = [
+        ...adminPages.filter((page) => !["users", "roles", "profile", "exchange-rate"].includes(page) && pages.includes(page)),
+        "profile",
+      ];
+    }
     return {
       ...initial, ...parsed, tiers,
       exchangeRate: typeof parsed.exchangeRate === "number" && Number.isSafeInteger(parsed.exchangeRate) && parsed.exchangeRate > 0 && parsed.exchangeRate <= 1_000_000_000
@@ -152,13 +168,8 @@ function restoreState(saved: string | null): State {
         : initial.exchangeRate,
       adminUsers: parsed.adminUsers?.length ? parsed.adminUsers : initial.adminUsers,
       disabledCustomerIds: parsed.disabledCustomerIds ?? [],
-      rolePermissions: {
-        ...initial.rolePermissions,
-        ...parsed.rolePermissions,
-        marketing_manager: [...new Set([...(parsed.rolePermissions?.marketing_manager ?? initial.rolePermissions.marketing_manager), "profile" as AdminPage])],
-        loyalty_manager: [...new Set([...(parsed.rolePermissions?.loyalty_manager ?? initial.rolePermissions.loyalty_manager), "profile" as AdminPage])],
-        super_admin: adminPages,
-      },
+      roleLabels,
+      rolePermissions,
     };
   } catch {
     return initial;
@@ -255,6 +266,7 @@ type Shop = State & {
   setAdminUserActive: (actorId: string, userId: string, active: boolean) => string | null;
   setCustomerActive: (actorId: string, userId: string, active: boolean) => string | null;
   saveRolePermissions: (actorId: string, role: AdminRole, pages: AdminPage[]) => string | null;
+  createAdminRole: (actorId: string, name: string) => { roleId?: AdminRole; error?: string };
   updateAdminProfile: (userId: string, fields: Pick<AdminUser, "name" | "email">) => string | null;
   currentUser: Customer;
   setCurrency: (currency: "USD" | "KHR") => void;
@@ -352,7 +364,7 @@ export function ShopProvider({ children }: { children: ReactNode }) {
         const email = user.email.trim().toLowerCase();
         if (!name || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
           return "Enter a name and valid email address.";
-        if (!["super_admin", "marketing_manager", "loyalty_manager"].includes(user.role))
+        if (!Object.prototype.hasOwnProperty.call(state.roleLabels, user.role) || !state.rolePermissions[user.role])
           return "Choose a valid staff role.";
         if (state.adminUsers.some((item) => item.email.toLowerCase() === email && item.id !== user.id))
           return "An admin user already has that email address.";
@@ -396,11 +408,29 @@ export function ShopProvider({ children }: { children: ReactNode }) {
         const actor = state.adminUsers.find((item) => item.id === actorId && item.active);
         if (actor?.role !== "super_admin") return "Only Super Admin can change permissions.";
         if (role === "super_admin") return "Super Admin always has full access.";
+        if (!Object.prototype.hasOwnProperty.call(state.roleLabels, role)) return "Role not found.";
         const allowed = adminPages.filter((page) => page !== "users" && page !== "roles" && page !== "profile" && page !== "exchange-rate" && pages.includes(page));
         if (!allowed.length) return "Select at least one section for this role.";
         allowed.push("profile");
         setState((s) => ({ ...s, rolePermissions: { ...s.rolePermissions, [role]: allowed }, logs: [{ id: uid(), userId: actor.id, userName: actor.name, event: "ROLE_PERMISSIONS_UPDATED", description: `Updated ${role} permissions: ${allowed.join(", ")}`, timestamp: now().replace("T", " ").slice(0, 16) }, ...s.logs] }));
         return null;
+      },
+      createAdminRole: (actorId, name) => {
+        const actor = state.adminUsers.find((item) => item.id === actorId && item.active);
+        if (actor?.role !== "super_admin") return { error: "Only Super Admin can create roles." };
+        const label = name.trim().replace(/\s+/g, " ");
+        if (label.length < 2 || label.length > 50)
+          return { error: "Enter a role name between 2 and 50 characters." };
+        if (Object.values(state.roleLabels).some((item) => item.toLowerCase() === label.toLowerCase()))
+          return { error: "A role with that name already exists." };
+        const roleId = `role-${uid()}`;
+        setState((s) => ({
+          ...s,
+          roleLabels: { ...s.roleLabels, [roleId]: label },
+          rolePermissions: { ...s.rolePermissions, [roleId]: ["dashboard", "profile"] },
+          logs: [{ id: uid(), userId: actor.id, userName: actor.name, event: "ROLE_CREATED", description: `Created staff role ${label}`, timestamp: now().replace("T", " ").slice(0, 16) }, ...s.logs],
+        }));
+        return { roleId };
       },
       setCurrency: (currency) => setState((s) => ({ ...s, currency })),
       saveExchangeRate: (actorId, rate) => {

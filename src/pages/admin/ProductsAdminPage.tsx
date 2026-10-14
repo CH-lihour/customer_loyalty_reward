@@ -3,7 +3,9 @@ import { categories, type Product } from "../../data/mockData"
 import { useShop } from "../../data/shop"
 import { useFeedback } from "../../components/FeedbackProvider"
 import { AdminModal } from "../../components/AdminModal"
+import { useModalState } from "../../components/useModalState"
 import { ActionIconButton } from "../../components/ActionIconButton"
+import { ImagePreviewDialog } from "../../components/ImagePreviewDialog"
 
 const blank = (): Product => ({
   id: "",
@@ -24,9 +26,11 @@ const input =
 export function AdminProductsPage() {
   const { products, saveProduct, deleteProduct } = useShop()
   const { notify, confirm } = useFeedback()
-  const [editing, setEditing] = useState<Product | null>(null)
+  const [editing, setEditing, modalClosing] = useModalState<Product | null>(null)
+  const [previewId, setPreviewId, previewClosing] = useModalState<string | null>(null)
   const [filter, setFilter] = useState("All")
   const [error, setError] = useState("")
+  const previewProduct = products.find((product) => product.id === previewId)
   const change = <K extends keyof Product>(key: K, value: Product[K]) =>
     setEditing((p) => (p ? { ...p, [key]: value } : p))
   const save = (event: FormEvent) => {
@@ -82,6 +86,7 @@ export function AdminProductsPage() {
       </div>
       {editing && (
         <AdminModal
+          closing={modalClosing}
           title={editing.id ? "Edit Product" : "New Product"}
           onClose={() => {
             setEditing(null)
@@ -241,11 +246,9 @@ export function AdminProductsPage() {
                 <tr key={p.id} className="border-t border-[var(--border)]">
                   <td className="p-3">
                     <div className="flex items-center gap-2">
-                      <img
-                        className="h-9 w-9 rounded object-cover"
-                        src={p.image}
-                        alt=""
-                      />
+                      <button type="button" onClick={() => setPreviewId(p.id)} aria-label={`Inspect image of ${p.name}`} className="shrink-0 rounded focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--gold-mid)]">
+                        <img className="h-9 w-9 rounded object-cover" src={p.image} alt="" />
+                      </button>
                       {p.name}
                     </div>
                   </td>
@@ -277,6 +280,7 @@ export function AdminProductsPage() {
           </tbody>
         </table>
       </div>
+      {previewProduct && <ImagePreviewDialog image={previewProduct.image} name={previewProduct.name} onClose={() => setPreviewId(null)} closing={previewClosing} />}
     </div>
   )
 }

@@ -4,7 +4,9 @@ import { useShop } from "../../data/shop"
 import { useFeedback } from "../../components/FeedbackProvider"
 import { TierBadge } from "../../components/TierBadge"
 import { AdminModal } from "../../components/AdminModal"
+import { useModalState } from "../../components/useModalState"
 import { ActionIconButton } from "../../components/ActionIconButton"
+import { ImagePreviewDialog } from "../../components/ImagePreviewDialog"
 
 const blank = (): Reward => ({
   id: "",
@@ -23,8 +25,10 @@ const field =
 export function AdminRewardsPage() {
   const { rewards, saveReward, deleteReward } = useShop()
   const { notify, confirm } = useFeedback()
-  const [editing, setEditing] = useState<Reward | null>(null)
+  const [editing, setEditing, modalClosing] = useModalState<Reward | null>(null)
+  const [previewId, setPreviewId, previewClosing] = useModalState<string | null>(null)
   const [error, setError] = useState("")
+  const previewReward = rewards.find((reward) => reward.id === previewId)
   const change = <K extends keyof Reward>(key: K, value: Reward[K]) =>
     setEditing((r) => (r ? { ...r, [key]: value } : r))
   const save = (e: FormEvent) => {
@@ -62,6 +66,7 @@ export function AdminRewardsPage() {
       </div>
       {editing && (
         <AdminModal
+          closing={modalClosing}
           title={editing.id ? "Edit Reward" : "New Reward"}
           onClose={() => {
             setEditing(null)
@@ -194,7 +199,9 @@ export function AdminRewardsPage() {
             key={r.id}
             className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)]"
           >
-            <img src={r.image} alt="" className="h-28 w-full object-cover" />
+            <button type="button" onClick={() => setPreviewId(r.id)} aria-label={`Inspect image of ${r.name}`} className="block h-28 w-full cursor-zoom-in overflow-hidden focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--gold-mid)]">
+              <img src={r.image} alt="" className="h-full w-full object-cover" />
+            </button>
             <div className="space-y-2 p-4">
               <div className="flex items-center justify-between">
                 <strong>{r.name}</strong>
@@ -237,6 +244,7 @@ export function AdminRewardsPage() {
           </div>
         ))}
       </div>
+      {previewReward && <ImagePreviewDialog image={previewReward.image} name={previewReward.name} onClose={() => setPreviewId(null)} closing={previewClosing} />}
     </div>
   )
 }

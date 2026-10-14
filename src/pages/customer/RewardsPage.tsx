@@ -2,11 +2,15 @@ import { useState } from "react";
 import { useShop } from "../../data/shop";
 import { TierBadge } from "../../components/TierBadge";
 import { useFeedback } from "../../components/FeedbackProvider";
+import { ImagePreviewDialog } from "../../components/ImagePreviewDialog";
+import { useModalState } from "../../components/useModalState";
 
 export function RewardsPage() {
   const shop = useShop();
   const { notify, confirm } = useFeedback();
   const [filter, setFilter] = useState<"available" | "all">("available");
+  const [previewId, setPreviewId, previewClosing] = useModalState<string | null>(null);
+  const previewReward = shop.rewards.find((reward) => reward.id === previewId);
   const eligible = (id: string) => {
     const reward = shop.rewards.find((r) => r.id === id)!;
     return (
@@ -64,12 +68,10 @@ export function RewardsPage() {
             className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)]"
           >
             <div className="relative h-32">
-              <img
-                src={r.image}
-                alt={r.name}
-                className="h-full w-full object-cover"
-              />
-              <div className="absolute left-2 top-2">
+              <button type="button" onClick={() => setPreviewId(r.id)} aria-label={`Inspect image of ${r.name}`} className="h-full w-full cursor-zoom-in overflow-hidden focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--gold-mid)]">
+                <img src={r.image} alt={r.name} className="h-full w-full object-cover" />
+              </button>
+              <div className="pointer-events-none absolute left-2 top-2">
                 <TierBadge tier={r.minTier} />
               </div>
             </div>
@@ -150,6 +152,7 @@ export function RewardsPage() {
           </p>
         )}
       </section>
+      {previewReward && <ImagePreviewDialog image={previewReward.image} name={previewReward.name} onClose={() => setPreviewId(null)} closing={previewClosing} />}
     </div>
   );
 }

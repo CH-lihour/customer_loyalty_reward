@@ -3,7 +3,7 @@ export type AdminPage =
   | "points" | "tiers" | "campaigns" | "rewards" | "badges"
   | "referrals" | "logs" | "exchange-rate" | "users" | "roles" | "profile";
 
-export type AdminRole = "super_admin" | "marketing_manager" | "loyalty_manager";
+export type AdminRole = string;
 
 export type AdminUser = {
   id: string;
@@ -22,7 +22,7 @@ export const adminPageLabels: Record<AdminPage, string> = {
   roles: "Role Permissions", profile: "My Profile",
 };
 
-export const adminRoleLabels: Record<AdminRole, string> = {
+export const defaultAdminRoleLabels: Record<AdminRole, string> = {
   super_admin: "Super Admin",
   marketing_manager: "Marketing Manager",
   loyalty_manager: "Loyalty Program Manager",

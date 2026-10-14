@@ -8,6 +8,7 @@ import {
 } from "./components/LoginPage";
 import { CustomerLayout } from "./components/CustomerLayout";
 import { AddToCartDialog } from "./components/AddToCartDialog";
+import { useModalState } from "./components/useModalState";
 import { AdminLayout, type AdminPage } from "./components/AdminLayout";
 import { adminPages } from "./data/adminAccess";
 
@@ -118,7 +119,7 @@ function readSession(): Session | null {
 export default function App() {
   const [session, setSession] = useState<Session | null>(readSession);
   const [route, setRoute] = useState<Route>(readRoute);
-  const [pendingProductId, setPendingProductId] = useState<string | null>(null);
+  const [pendingProductId, setPendingProductId, cartDialogClosing] = useModalState<string | null>(null);
   const pendingRoute = useRef<Route | null>(null);
   const shop = useShop();
   const { notify } = useFeedback();
@@ -193,7 +194,7 @@ export default function App() {
     const nextAdmin = next.role === "admin"
       ? shop.adminUsers.find((user) => user.id === next.userId)
       : undefined;
-    const nextAdminPages = nextAdmin ? shop.rolePermissions[nextAdmin.role] : [];
+    const nextAdminPages = nextAdmin ? shop.rolePermissions[nextAdmin.role] ?? [] : [];
     const canResume = !!destination && destination.role === next.role &&
       (destination.role === "customer" ||
         (destination.role === "admin" && nextAdminPages.includes(destination.page)));
@@ -316,7 +317,7 @@ export default function App() {
   if (session?.role === "admin") {
     if (!adminUser || !allowedAdminPages.includes(adminPage)) return null;
     return (
-      <AdminLayout page={adminPage} onNav={navigateAdmin} onLogout={logout} allowedPages={allowedAdminPages} userName={adminUser.name} userRole={adminUser.role}>
+      <AdminLayout page={adminPage} onNav={navigateAdmin} onLogout={logout} allowedPages={allowedAdminPages} userName={adminUser.name} userRoleLabel={shop.roleLabels[adminUser.role] ?? adminUser.role}>
         {adminPage === "dashboard" && <AdminDashboardPage />}
         {adminPage === "customers" && <AdminCustomersPage />}
         {adminPage === "products" && <AdminProductsPage />}
@@ -371,6 +372,7 @@ export default function App() {
           available={availableQty}
           money={shop.money}
           onClose={() => setPendingProductId(null)}
+          closing={cartDialogClosing}
           onConfirm={confirmAddToCart}
         />
       )}

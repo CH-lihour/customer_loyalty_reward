@@ -1,6 +1,6 @@
 ﻿import { type ReactNode } from "react";
 import { Icon } from "./Icon";
-import { adminRoleLabels, type AdminPage, type AdminRole } from "../data/adminAccess";
+import { type AdminPage } from "../data/adminAccess";
 
 export type { AdminPage } from "../data/adminAccess";
 
@@ -34,11 +34,11 @@ interface Props {
   onLogout: () => void;
   allowedPages: AdminPage[];
   userName: string;
-  userRole: AdminRole;
+  userRoleLabel: string;
   children: ReactNode;
 }
 
-export function AdminLayout({ page, onNav, onLogout, allowedPages, userName, userRole, children }: Props) {
+export function AdminLayout({ page, onNav, onLogout, allowedPages, userName, userRoleLabel, children }: Props) {
   const groups = ["Overview", "E-Commerce", "Loyalty", "System", "Account"];
 
   return (
@@ -53,7 +53,7 @@ export function AdminLayout({ page, onNav, onLogout, allowedPages, userName, use
                 KhmerShop
               </div>
               <div className="text-xs text-[var(--muted-foreground)]">
-                {adminRoleLabels[userRole]}
+                {userRoleLabel}
               </div>
             </div>
           </div>

@@ -4,6 +4,7 @@ import { useFeedback } from "../../components/FeedbackProvider"
 import type { Tier } from "../../data/mockData"
 import { TierBadge } from "../../components/TierBadge"
 import { AdminModal } from "../../components/AdminModal"
+import { useModalState } from "../../components/useModalState"
 import { ActionIconButton } from "../../components/ActionIconButton"
 
 const riskLabel = (lastOrder: string) => {
@@ -22,7 +23,7 @@ export function AdminCustomersPage() {
   const { notify } = useFeedback()
   const [search, setSearch] = useState("")
   const [tierFilter, setTierFilter] = useState("All")
-  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editingId, setEditingId, modalClosing] = useModalState<string | null>(null)
   const [selectedTier, setSelectedTier] = useState("Auto")
   const [reason, setReason] = useState("")
   const editingCustomer = customers.find(
@@ -149,6 +150,7 @@ export function AdminCustomersPage() {
       </div>
       {editingCustomer && (
         <AdminModal
+          closing={modalClosing}
           title={`Tier override for ${editingCustomer.name}`}
           onClose={() => setEditingId(null)}
         >

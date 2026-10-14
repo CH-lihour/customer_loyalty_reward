@@ -1,16 +1,17 @@
 import { useState, type FormEvent } from "react";
 import { AdminModal } from "../../components/AdminModal";
+import { useModalState } from "../../components/useModalState";
 import { ActionIconButton } from "../../components/ActionIconButton";
 import { useFeedback } from "../../components/FeedbackProvider";
 import { useShop } from "../../data/shop";
-import { adminRoleLabels, type AdminRole, type AdminUser } from "../../data/adminAccess";
+import { type AdminRole, type AdminUser } from "../../data/adminAccess";
 
 const fieldClass = "mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--secondary)] px-3 py-2 text-sm";
 
 export function AdminUsersPage({ actorId }: { actorId: string }) {
-  const { adminUsers, customers, disabledCustomerIds, saveAdminUser, setAdminUserActive, setCustomerActive } = useShop();
+  const { adminUsers, roleLabels, customers, disabledCustomerIds, saveAdminUser, setAdminUserActive, setCustomerActive } = useShop();
   const { notify } = useFeedback();
-  const [editing, setEditing] = useState<AdminUser | null>(null);
+  const [editing, setEditing, modalClosing] = useModalState<AdminUser | null>(null);
   const [error, setError] = useState("");
   const [customerSearch, setCustomerSearch] = useState("");
 
@@ -57,7 +58,7 @@ export function AdminUsersPage({ actorId }: { actorId: string }) {
         </tr></thead>
         <tbody className="divide-y divide-[var(--border)]">{adminUsers.map((user) => <tr key={user.id}>
           <td className="px-4 py-3"><div className="font-medium">{user.name}</div><div className="text-xs text-[var(--muted-foreground)]">{user.email}</div></td>
-          <td className="px-4 py-3">{adminRoleLabels[user.role]}</td>
+          <td className="px-4 py-3">{roleLabels[user.role] ?? user.role}</td>
           <td className="px-4 py-3"><span className={user.active ? "text-green-400" : "text-[var(--muted-foreground)]"}>{user.active ? "Active" : "Disabled"}</span></td>
           <td className="px-4 py-3 text-right"><div className="flex justify-end gap-2">
             <ActionIconButton action="edit" label={`Edit ${user.name}`} onClick={() => open(user)} />
@@ -83,12 +84,12 @@ export function AdminUsersPage({ actorId }: { actorId: string }) {
         })}</tbody></table>
       </div>
     </section>
-    {editing && <AdminModal title={editing.id ? "Edit staff user" : "Add staff user"} onClose={() => setEditing(null)}>
+    {editing && <AdminModal title={editing.id ? "Edit staff user" : "Add staff user"} closing={modalClosing} onClose={() => setEditing(null)}>
       <form onSubmit={save} className="space-y-4">
         <label className="block text-sm">Name<input required className={fieldClass} value={editing.name} onChange={(event) => setEditing({ ...editing, name: event.target.value })} /></label>
         <label className="block text-sm">Email<input required type="email" className={fieldClass} value={editing.email} onChange={(event) => setEditing({ ...editing, email: event.target.value })} /></label>
         <label className="block text-sm">Role<select className={fieldClass} value={editing.role} disabled={editing.id === "admin-super"} onChange={(event) => setEditing({ ...editing, role: event.target.value as AdminRole })}>
-          {(Object.keys(adminRoleLabels) as AdminRole[]).map((role) => <option key={role} value={role}>{adminRoleLabels[role]}</option>)}
+          {(Object.keys(roleLabels) as AdminRole[]).map((role) => <option key={role} value={role}>{roleLabels[role]}</option>)}
         </select></label>
         {error && <p role="alert" className="text-sm text-red-400">{error}</p>}
         <div className="flex gap-2"><button type="submit" className="rounded-lg bg-[var(--gold-mid)] px-4 py-2 font-semibold text-[var(--background)]">Save user</button><button type="button" onClick={() => setEditing(null)} className="rounded-lg bg-[var(--secondary)] px-4 py-2">Cancel</button></div>

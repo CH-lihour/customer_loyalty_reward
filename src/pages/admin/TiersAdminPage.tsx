@@ -4,6 +4,7 @@ import { useShop } from "../../data/shop"
 import { useFeedback } from "../../components/FeedbackProvider"
 import { TierBadge } from "../../components/TierBadge"
 import { AdminModal } from "../../components/AdminModal"
+import { useModalState } from "../../components/useModalState"
 import { ActionIconButton } from "../../components/ActionIconButton"
 
 const tiers: Tier[] = ["Silver", "Gold", "Platinum"]
@@ -12,7 +13,7 @@ export function AdminTiersPage() {
   const shop = useShop()
   const { notify } = useFeedback()
   const [draft, setDraft] = useState(shop.tiers)
-  const [editing, setEditing] = useState(false)
+  const [editing, setEditing, modalClosing] = useModalState<boolean>(false)
   const [message, setMessage] = useState("")
 
   const openEditor = () => {
@@ -101,6 +102,7 @@ export function AdminTiersPage() {
       </p>
       {editing && (
         <AdminModal
+          closing={modalClosing}
           title="Edit Tier Rules"
           onClose={() => setEditing(false)}
           wide

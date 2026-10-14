@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { categories, type Product } from "../../data/mockData";
 import { useShop } from "../../data/shop";
+import { modalExitDelay, useModalState } from "../../components/useModalState";
+import { ImagePreviewDialog } from "../../components/ImagePreviewDialog";
 
 interface Props {
   onAddToCart: (productId: string) => void;
@@ -14,30 +16,33 @@ function ProductDetail({
   onClose,
   onAddToCart,
   guest,
+  closing,
 }: {
   product: Product;
   money: (amount: number) => string;
   onClose: () => void;
   onAddToCart: (productId: string) => void;
   guest: boolean;
+  closing: boolean;
 }) {
+  const [imageOpen, setImageOpen, imageClosing] = useModalState<boolean>(false);
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape" && !imageOpen) onClose();
     };
     document.addEventListener("keydown", onKeyDown);
     return () => {
       document.body.style.overflow = previousOverflow;
       document.removeEventListener("keydown", onKeyDown);
     };
-  }, [onClose]);
+  }, [onClose, imageOpen]);
 
   return createPortal(
     <div
       role="presentation"
-      className="fixed inset-0 z-[100] grid place-items-center bg-black/75 p-4 backdrop-blur-sm"
+      className={`fixed inset-0 z-[100] grid place-items-center bg-black/75 p-4 backdrop-blur-sm ${closing ? "modal-backdrop-leaving" : ""}`}
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
@@ -49,11 +54,9 @@ function ProductDetail({
         className="product-dialog"
       >
         <div className="relative h-52 bg-[var(--secondary)] sm:h-64">
-          <img
-            src={product.image}
-            alt={product.name}
-            className="h-full w-full object-cover"
-          />
+          <button type="button" onClick={() => setImageOpen(true)} aria-label={`Inspect image of ${product.name}`} className="h-full w-full cursor-zoom-in">
+            <img src={product.image} alt={product.name} className="h-full w-full object-cover" />
+          </button>
           <button
             type="button"
             autoFocus
@@ -91,8 +94,8 @@ function ProductDetail({
             type="button"
             disabled={product.stock < 1}
             onClick={() => {
-              onAddToCart(product.id);
               onClose();
+              setTimeout(() => onAddToCart(product.id), modalExitDelay());
             }}
             className="w-full rounded-lg bg-[var(--gold-mid)] py-2 font-semibold text-[var(--background)] disabled:opacity-40"
           >
@@ -100,6 +103,7 @@ function ProductDetail({
           </button>
         </div>
       </section>
+      {imageOpen && <ImagePreviewDialog image={product.image} name={product.name} onClose={() => setImageOpen(false)} closing={imageClosing} />}
     </div>,
     document.body,
   );
@@ -109,7 +113,7 @@ export function ProductsPage({ onAddToCart, guest = false }: Props) {
   const { products, money } = useShop();
   const [activeCategory, setActiveCategory] = useState("All");
   const [search, setSearch] = useState("");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId, detailClosing] = useModalState<string | null>(null);
   const selected = products.find((p) => p.id === selectedId);
   const filtered = products.filter((product) => {
     const matchesCategory =
@@ -240,6 +244,7 @@ export function ProductsPage({ onAddToCart, guest = false }: Props) {
           onClose={() => setSelectedId(null)}
           onAddToCart={onAddToCart}
           guest={guest}
+          closing={detailClosing}
         />
       )}
     </div>

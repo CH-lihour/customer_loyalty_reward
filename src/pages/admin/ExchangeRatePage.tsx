@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react"
 import { AdminModal } from "../../components/AdminModal"
+import { useModalState } from "../../components/useModalState"
 import { Icon } from "../../components/Icon"
 import { useFeedback } from "../../components/FeedbackProvider"
 import { useShop } from "../../data/shop"
@@ -9,7 +10,7 @@ const formatKHR = (amount: number) => `៛${amount.toLocaleString()}`
 export function AdminExchangeRatePage({ actorId }: { actorId: string }) {
   const shop = useShop()
   const { notify } = useFeedback()
-  const [editing, setEditing] = useState(false)
+  const [editing, setEditing, modalClosing] = useModalState<boolean>(false)
   const [draft, setDraft] = useState("")
   const [error, setError] = useState("")
   const lastChange = shop.logs.find(
@@ -162,6 +163,7 @@ export function AdminExchangeRatePage({ actorId }: { actorId: string }) {
 
       {editing && (
         <AdminModal
+          closing={modalClosing}
           title="Update Exchange Rate"
           onClose={() => setEditing(false)}
         >

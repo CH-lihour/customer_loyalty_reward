@@ -7,9 +7,10 @@ type Props = {
   money: (amount: number) => string;
   onClose: () => void;
   onConfirm: (qty: number) => void;
+  closing?: boolean;
 };
 
-export function AddToCartDialog({ product, available, money, onClose, onConfirm }: Props) {
+export function AddToCartDialog({ product, available, money, onClose, onConfirm, closing = false }: Props) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [qty, setQty] = useState(1);
   const selectedQty = Math.min(qty, available);
@@ -23,9 +24,19 @@ export function AddToCartDialog({ product, available, money, onClose, onConfirm 
   return (
     <dialog
       ref={dialogRef}
-      onCancel={onClose}
+      onCancel={(event) => {
+        event.preventDefault();
+        onClose();
+      }}
+      onClick={(event) => {
+        if (event.target !== event.currentTarget) return;
+        const { left, right, top, bottom } = event.currentTarget.getBoundingClientRect();
+        if (event.clientX < left || event.clientX > right || event.clientY < top || event.clientY > bottom) {
+          onClose();
+        }
+      }}
       aria-labelledby="add-to-cart-title"
-      className="add-to-cart-dialog"
+      className={`add-to-cart-dialog ${closing ? "modal-leaving" : ""}`}
     >
       <div className="flex items-start justify-between gap-4">
         <div>

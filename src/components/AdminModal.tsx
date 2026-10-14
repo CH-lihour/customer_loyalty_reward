@@ -5,9 +5,10 @@ interface Props {
   onClose: () => void
   children: ReactNode
   wide?: boolean
+  closing?: boolean
 }
 
-export function AdminModal({ title, onClose, children, wide = false }: Props) {
+export function AdminModal({ title, onClose, children, wide = false, closing = false }: Props) {
   const dialogRef = useRef<HTMLDialogElement>(null)
   const titleId = useId()
 
@@ -37,7 +38,7 @@ export function AdminModal({ title, onClose, children, wide = false }: Props) {
           onClose()
         }
       }}
-      className={`admin-modal w-[calc(100%-2rem)] ${
+      className={`admin-modal w-[calc(100%-2rem)] ${closing ? "modal-leaving" : ""} ${
         wide ? "max-w-4xl" : "max-w-xl"
       }`}
     >

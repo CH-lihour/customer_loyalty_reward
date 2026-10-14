@@ -7,6 +7,7 @@
   useState,
   type ReactNode,
 } from "react";
+import { modalExitDelay } from "./useModalState";
 
 type Tone = "success" | "error" | "info";
 type Toast = { id: number; message: string; tone: Tone; leaving: boolean };
@@ -26,10 +27,12 @@ let nextToastId = 0;
 export function FeedbackProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [dialog, setDialog] = useState<Dialog | null>(null);
+  const [dialogClosing, setDialogClosing] = useState(false);
   const [answer, setAnswer] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const lastFocus = useRef<HTMLElement | null>(null);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const dialogClosingRef = useRef(false);
 
   const dismiss = useCallback((id: number) => {
     setToasts((items) =>
@@ -57,6 +60,8 @@ export function FeedbackProvider({ children }: { children: ReactNode }) {
     (message: string) =>
       new Promise<boolean>((resolve) => {
         lastFocus.current = document.activeElement as HTMLElement;
+        dialogClosingRef.current = false;
+        setDialogClosing(false);
         setAnswer("");
         setDialog({
           kind: "confirm",
@@ -70,6 +75,8 @@ export function FeedbackProvider({ children }: { children: ReactNode }) {
     (message: string) =>
       new Promise<string | null>((resolve) => {
         lastFocus.current = document.activeElement as HTMLElement;
+        dialogClosingRef.current = false;
+        setDialogClosing(false);
         setAnswer("");
         setDialog({
           kind: "prompt",
@@ -81,9 +88,21 @@ export function FeedbackProvider({ children }: { children: ReactNode }) {
   );
   const finish = useCallback(
     (value: boolean | string | null) => {
-      dialog?.resolve(value);
-      setDialog(null);
-      lastFocus.current?.focus();
+      if (!dialog || dialogClosingRef.current) return;
+      dialogClosingRef.current = true;
+      const complete = () => {
+        dialog.resolve(value);
+        setDialog(null);
+        setDialogClosing(false);
+        dialogClosingRef.current = false;
+        lastFocus.current?.focus();
+      };
+      const delay = modalExitDelay();
+      if (delay === 0) complete();
+      else {
+        setDialogClosing(true);
+        timers.current.push(setTimeout(complete, delay));
+      }
     },
     [dialog],
   );
@@ -154,7 +173,7 @@ export function FeedbackProvider({ children }: { children: ReactNode }) {
       </div>
       {dialog && (
         <div
-          className="feedback-backdrop"
+          className={`feedback-backdrop ${dialogClosing ? "modal-backdrop-leaving" : ""}`}
           onMouseDown={(event) => {
             if (event.target === event.currentTarget)
               finish(dialog.kind === "confirm" ? false : null);

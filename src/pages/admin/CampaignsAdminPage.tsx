@@ -2,6 +2,7 @@
 import { useShop, type Campaign } from "../../data/shop"
 import { useFeedback } from "../../components/FeedbackProvider"
 import { AdminModal } from "../../components/AdminModal"
+import { useModalState } from "../../components/useModalState"
 import { ActionIconButton } from "../../components/ActionIconButton"
 const blank = (): Campaign => ({
   id: "",
@@ -16,7 +17,7 @@ const field =
 export function AdminCampaignsPage() {
   const { campaigns, saveCampaign, deleteCampaign } = useShop()
   const { notify, confirm } = useFeedback()
-  const [editing, setEditing] = useState<Campaign | null>(null)
+  const [editing, setEditing, modalClosing] = useModalState<Campaign | null>(null)
   const [error, setError] = useState("")
   const save = (e: FormEvent) => {
     e.preventDefault()
@@ -52,6 +53,7 @@ export function AdminCampaignsPage() {
       </p>
       {editing && (
         <AdminModal
+          closing={modalClosing}
           title={editing.id ? "Edit Campaign" : "New Campaign"}
           onClose={() => {
             setEditing(null)
@@ -166,7 +168,9 @@ export function AdminCampaignsPage() {
               </div>
               <div className="flex items-center gap-2 text-sm">
                 <ActionIconButton action="edit" label={`Edit ${c.name}`} onClick={() => setEditing(c)} />
-                <button
+                <ActionIconButton
+                  action={c.active ? "deactivate" : "activate"}
+                  label={`${c.active ? "Deactivate" : "Activate"} ${c.name}`}
                   onClick={() => {
                     saveCampaign({ ...c, active: !c.active })
                     notify(
@@ -174,9 +178,7 @@ export function AdminCampaignsPage() {
                       "success",
                     )
                   }}
-                >
-                  {c.active ? "Deactivate" : "Activate"}
-                </button>
+                />
                 <ActionIconButton
                   action="delete"
                   label={`Delete ${c.name}`}
