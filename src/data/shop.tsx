@@ -15,6 +15,7 @@ import {
   customers,
   loyaltyTransactions,
   orders,
+  productCategories,
   products,
   rewards,
   tierConfig,
@@ -24,6 +25,7 @@ import {
   type Order,
   type OrderStatus,
   type Product,
+  type ProductCategory,
   type Reward,
   type Tier,
 } from "./mockData";
@@ -115,6 +117,7 @@ type State = {
   disabledCustomerIds: string[];
   customers: Customer[];
   products: Product[];
+  categories: ProductCategory[];
   orders: Order[];
   transactions: LoyaltyTransaction[];
   rewards: Reward[];
@@ -173,6 +176,7 @@ const initial: State = {
   disabledCustomerIds: [],
   customers: [...customers, ...extraCustomers],
   products: [...products, ...extraProducts],
+  categories: productCategories,
   orders,
   transactions: [...stockSeed.transactions, ...loyaltyTransactions],
   rewards,
@@ -260,6 +264,15 @@ function restoreStock(parsed: Partial<State>, rewardList: Reward[], roleLabels: 
     },
   };
 }
+/** Keeps saved categories, adding seed ones for saves that predate the module and any name a product still uses. */
+function restoreCategories(parsed: Partial<State>): ProductCategory[] {
+  const categories = Array.isArray(parsed.categories) ? [...parsed.categories] : [...initial.categories];
+  for (const product of parsed.products ?? []) {
+    if (product.category && !categories.some((c) => c.name === product.category))
+      categories.push({ id: `cat-${uid().slice(0, 8)}`, name: product.category, nameKh: "", description: "", active: true });
+  }
+  return categories;
+}
 function restoreState(saved: string | null): State {
   if (!saved) return initial;
   try {
@@ -288,6 +301,7 @@ function restoreState(saved: string | null): State {
         ? [...parsed.adminUsers, ...initial.adminUsers.filter((seed) => !parsed.adminUsers!.some((user) => user.id === seed.id || user.email.toLowerCase() === seed.email))]
         : initial.adminUsers,
       disabledCustomerIds: parsed.disabledCustomerIds ?? [],
+      categories: restoreCategories(parsed),
       roleLabels,
       rolePermissions,
       ...restoreStock(parsed, parsed.rewards ?? initial.rewards, roleLabels),
@@ -398,6 +412,14 @@ const stockActor = (s: State, actorId: string, need: StockAuthority): AdminUser 
     return "Your role has no inventory access.";
   if (stockAuthorityRank[authorityFor(s, actor.role)] < stockAuthorityRank[need])
     return `This action needs ${stockAuthorityLabels[need].toLowerCase()} authority.`;
+  return actor;
+};
+/** Returns the acting staff user, or an error when their role cannot manage product categories. */
+const categoryActor = (s: State, actorId: string): AdminUser | string => {
+  const actor = s.adminUsers.find((user) => user.id === actorId && user.active);
+  if (!actor) return "Staff account not found.";
+  if (actor.role !== "super_admin" && !(s.rolePermissions[actor.role] ?? []).includes("categories"))
+    return "Your role cannot manage categories.";
   return actor;
 };
 const stockItemOf = (s: State, rewardId: string) => s.stockItems[rewardId] ?? defaultStockItem({ id: rewardId });
@@ -619,6 +641,8 @@ type Shop = State & {
   createAdminRole: (actorId: string, name: string) => { roleId?: AdminRole; error?: string };
   updateAdminProfile: (userId: string, fields: Pick<AdminUser, "name" | "email">) => string | null;
   currentUser: Customer;
+  /** Products customers can browse: those whose category is active. */
+  storefrontProducts: Product[];
   setCurrency: (currency: "USD" | "KHR") => void;
   saveExchangeRate: (actorId: string, rate: number) => string | null;
   money: (usd: number) => string;
@@ -634,6 +658,9 @@ type Shop = State & {
   ) => string | null;
   saveProduct: (product: Product) => void;
   deleteProduct: (id: string) => void;
+  /** Creates or updates a category. Renaming it also renames the category on its products. */
+  saveCategory: (actorId: string, category: ProductCategory) => string | null;
+  deleteCategory: (actorId: string, id: string) => string | null;
   saveReward: (reward: Reward) => void;
   deleteReward: (id: string) => string | null;
   saveTier: (tier: Tier, rule: TierRule) => void;
@@ -756,10 +783,16 @@ export function ShopProvider({ children }: { children: ReactNode }) {
     state.customers.find((c) => c.id === state.currentUserId) ??
     state.customers[0];
 
+  const storefrontProducts = useMemo(() => {
+    const hidden = new Set(state.categories.filter((c) => !c.active).map((c) => c.name));
+    return state.products.filter((p) => !hidden.has(p.category));
+  }, [state.products, state.categories]);
+
   const shop = useMemo<Shop>(
     () => ({
       ...state,
       currentUser,
+      storefrontProducts,
       updateAdminProfile: (userId, fields) => {
         const user = state.adminUsers.find((item) => item.id === userId && item.active);
         if (!user) return "Admin account not found.";
@@ -1584,6 +1617,54 @@ export function ShopProvider({ children }: { children: ReactNode }) {
           products: s.products.filter((p) => p.id !== id),
           cart: s.cart.filter((c) => c.productId !== id),
         })),
+      saveCategory: (actorId, category) =>
+        commit((s) => {
+          const actor = categoryActor(s, actorId);
+          if (typeof actor === "string") return actor;
+          const name = category.name.trim();
+          if (!name) return "Enter a category name.";
+          if (name.length > 40) return "Keep the category name to 40 characters or fewer.";
+          if (s.categories.some((c) => c.id !== category.id && c.name.toLowerCase() === name.toLowerCase()))
+            return `A category named ${name} already exists.`;
+          const existing = s.categories.find((c) => c.id === category.id);
+          const saved: ProductCategory = {
+            ...category,
+            id: category.id || `cat-${uid().slice(0, 8)}`,
+            name,
+            nameKh: category.nameKh.trim(),
+            description: category.description.trim(),
+          };
+          const renamed = existing && existing.name !== name;
+          const change = !existing
+            ? `Created category ${name}`
+            : renamed
+              ? `Renamed category ${existing.name} to ${name}`
+              : existing.active !== saved.active
+                ? `${saved.active ? "Activated" : "Deactivated"} category ${name}`
+                : `Updated category ${name}`;
+          return {
+            ...s,
+            categories: existing ? s.categories.map((c) => (c.id === saved.id ? saved : c)) : [...s.categories, saved],
+            products: renamed
+              ? s.products.map((p) => (p.category === existing.name ? { ...p, category: name } : p))
+              : s.products,
+            logs: staffLog(s, actor, existing ? "CATEGORY_UPDATED" : "CATEGORY_CREATED", change),
+          };
+        }),
+      deleteCategory: (actorId, id) =>
+        commit((s) => {
+          const actor = categoryActor(s, actorId);
+          if (typeof actor === "string") return actor;
+          const category = s.categories.find((c) => c.id === id);
+          if (!category) return "Category not found.";
+          const used = s.products.filter((p) => p.category === category.name).length;
+          if (used) return `Move the ${used} product${used === 1 ? "" : "s"} in ${category.name} to another category first.`;
+          return {
+            ...s,
+            categories: s.categories.filter((c) => c.id !== id),
+            logs: staffLog(s, actor, "CATEGORY_DELETED", `Deleted category ${category.name}`),
+          };
+        }),
       saveReward: (reward) =>
         setState((s) => ({
           ...s,
@@ -1778,7 +1859,7 @@ export function ShopProvider({ children }: { children: ReactNode }) {
         return { ...s, logs: [entry, ...s.logs] };
       }),
     }),
-    [state, currentUser, stockLevels, commit, setState],
+    [state, currentUser, storefrontProducts, stockLevels, commit, setState],
   );
   return <ShopContext.Provider value={shop}>{children}</ShopContext.Provider>;
 }

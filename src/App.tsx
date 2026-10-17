@@ -26,6 +26,7 @@ import { ProfilePage } from "./pages/customer/ProfilePage";
 import { AdminDashboardPage } from "./pages/admin/DashboardPage";
 import { AdminCustomersPage } from "./pages/admin/CustomersPage";
 import { AdminProductsPage } from "./pages/admin/ProductsAdminPage";
+import { AdminCategoriesPage } from "./pages/admin/CategoriesAdminPage";
 import { AdminOrdersPage } from "./pages/admin/OrdersAdminPage";
 import { AdminPointsPage } from "./pages/admin/PointsAdminPage";
 import { AdminTiersPage } from "./pages/admin/TiersAdminPage";
@@ -58,7 +59,9 @@ type CustomerPage =
   | "badges"
   | "referrals"
   | "profile";
-type Session = { role: "admin"; userId: string } | { role: "customer"; userId: string };
+type Session =
+  | { role: "admin"; userId: string }
+  | { role: "customer"; userId: string };
 const sessionKey = "khmershop-demo-session";
 type Route =
   | { role: "customer"; page: CustomerPage }
@@ -66,28 +69,46 @@ type Route =
   | { role: "login"; loginRole: LoginRole };
 
 const customerPages: CustomerPage[] = [
-  "home", "products", "cart", "orders", "rewards", "points", "tier",
-  "badges", "referrals", "profile",
+  "home",
+  "products",
+  "cart",
+  "orders",
+  "rewards",
+  "points",
+  "tier",
+  "badges",
+  "referrals",
+  "profile",
 ];
 const guestPages: CustomerPage[] = ["home", "products", "cart"];
 const noAdminPages: AdminPage[] = [];
-const basePath = new URL(import.meta.env.BASE_URL, window.location.origin)
-  .pathname.replace(/\/$/, "");
+const basePath = new URL(
+  import.meta.env.BASE_URL,
+  window.location.origin,
+).pathname.replace(/\/$/, "");
 
 function routePath(route: Route): string {
-  const path = route.role === "login"
-    ? route.loginRole === "admin" ? "/admin/login" : "/login"
-    : route.role === "admin"
-      ? route.page === "dashboard" ? "/admin" : `/admin/${route.page}`
-      : route.page === "home" ? "/" : `/${route.page}`;
+  const path =
+    route.role === "login"
+      ? route.loginRole === "admin"
+        ? "/admin/login"
+        : "/login"
+      : route.role === "admin"
+        ? route.page === "dashboard"
+          ? "/admin"
+          : `/admin/${route.page}`
+        : route.page === "home"
+          ? "/"
+          : `/${route.page}`;
   return `${basePath}${path}`;
 }
 
 function readRoute(): Route {
   const pathname = window.location.pathname;
-  const relative = basePath && pathname.startsWith(`${basePath}/`)
-    ? pathname.slice(basePath.length)
-    : pathname;
+  const relative =
+    basePath && pathname.startsWith(`${basePath}/`)
+      ? pathname.slice(basePath.length)
+      : pathname;
   const path = relative.replace(/\/+$/, "") || "/";
   if (path === "/login") return { role: "login", loginRole: "customer" };
   if (path === "/admin/login") return { role: "login", loginRole: "admin" };
@@ -110,7 +131,11 @@ function readSession(): Session | null {
     if (!stored) return null;
     const session = JSON.parse(stored) as Partial<Session>;
     if (session.role === "admin")
-      return { role: "admin", userId: typeof session.userId === "string" ? session.userId : "admin-super" };
+      return {
+        role: "admin",
+        userId:
+          typeof session.userId === "string" ? session.userId : "admin-super",
+      };
     if (
       session.role === "customer" &&
       "userId" in session &&
@@ -126,14 +151,20 @@ function readSession(): Session | null {
 export default function App() {
   const [session, setSession] = useState<Session | null>(readSession);
   const [route, setRoute] = useState<Route>(readRoute);
-  const [pendingProductId, setPendingProductId, cartDialogClosing] = useModalState<string | null>(null);
+  const [pendingProductId, setPendingProductId, cartDialogClosing] =
+    useModalState<string | null>(null);
   const pendingRoute = useRef<Route | null>(null);
   const shop = useShop();
   const { notify } = useFeedback();
-  const adminUser = session?.role === "admin"
-    ? shop.adminUsers.find((user) => user.id === session.userId && user.active)
-    : undefined;
-  const allowedAdminPages = adminUser ? shop.rolePermissions[adminUser.role] ?? noAdminPages : noAdminPages;
+  const adminUser =
+    session?.role === "admin"
+      ? shop.adminUsers.find(
+          (user) => user.id === session.userId && user.active,
+        )
+      : undefined;
+  const allowedAdminPages = adminUser
+    ? (shop.rolePermissions[adminUser.role] ?? noAdminPages)
+    : noAdminPages;
 
   const navigate = (next: Route, replace = false) => {
     const path = routePath(next);
@@ -150,22 +181,43 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (session?.role === "customer" && shop.disabledCustomerIds.includes(session.userId)) {
-      try { sessionStorage.removeItem(sessionKey); } catch { /* In-memory sign-out still works. */ }
+    if (
+      session?.role === "customer" &&
+      shop.disabledCustomerIds.includes(session.userId)
+    ) {
+      try {
+        sessionStorage.removeItem(sessionKey);
+      } catch {
+        /* In-memory sign-out still works. */
+      }
       setSession(null);
       return;
     }
-    if (session?.role === "admin" && (!adminUser || !allowedAdminPages.length)) {
-      try { sessionStorage.removeItem(sessionKey); } catch { /* In-memory sign-out still works. */ }
+    if (
+      session?.role === "admin" &&
+      (!adminUser || !allowedAdminPages.length)
+    ) {
+      try {
+        sessionStorage.removeItem(sessionKey);
+      } catch {
+        /* In-memory sign-out still works. */
+      }
       setSession(null);
       return;
     }
     if (!session) {
-      if (route.role === "admin" || (route.role === "customer" && !guestPages.includes(route.page))) {
+      if (
+        route.role === "admin" ||
+        (route.role === "customer" && !guestPages.includes(route.page))
+      ) {
         pendingRoute.current = route;
         navigate({ role: "login", loginRole: route.role }, true);
       }
-    } else if (session.role === "admin" && route.role === "admin" && !allowedAdminPages.includes(route.page)) {
+    } else if (
+      session.role === "admin" &&
+      route.role === "admin" &&
+      !allowedAdminPages.includes(route.page)
+    ) {
       navigate({ role: "admin", page: allowedAdminPages[0] }, true);
     } else if (route.role === "login" || route.role !== session.role) {
       navigate(
@@ -198,13 +250,19 @@ export default function App() {
     setSession(next);
     const destination = pendingRoute.current;
     pendingRoute.current = null;
-    const nextAdmin = next.role === "admin"
-      ? shop.adminUsers.find((user) => user.id === next.userId)
-      : undefined;
-    const nextAdminPages = nextAdmin ? shop.rolePermissions[nextAdmin.role] ?? [] : [];
-    const canResume = !!destination && destination.role === next.role &&
+    const nextAdmin =
+      next.role === "admin"
+        ? shop.adminUsers.find((user) => user.id === next.userId)
+        : undefined;
+    const nextAdminPages = nextAdmin
+      ? (shop.rolePermissions[nextAdmin.role] ?? [])
+      : [];
+    const canResume =
+      !!destination &&
+      destination.role === next.role &&
       (destination.role === "customer" ||
-        (destination.role === "admin" && nextAdminPages.includes(destination.page)));
+        (destination.role === "admin" &&
+          nextAdminPages.includes(destination.page)));
     navigate(
       canResume && destination
         ? destination
@@ -221,7 +279,10 @@ export default function App() {
     password: string,
   ): string | null => {
     if (role === "admin") {
-      const admin = shop.adminUsers.find((user) => user.email.toLowerCase() === email.toLowerCase() && user.active);
+      const admin = shop.adminUsers.find(
+        (user) =>
+          user.email.toLowerCase() === email.toLowerCase() && user.active,
+      );
       if (!admin || password !== "admin1234")
         return "Incorrect admin email or password.";
       shop.recordLogin(null, admin.id);
@@ -231,7 +292,11 @@ export default function App() {
     const customer = shop.customers.find(
       (item) => item.email.toLowerCase() === email.toLowerCase(),
     );
-    if (!customer || password !== "demo1234" || shop.disabledCustomerIds.includes(customer.id))
+    if (
+      !customer ||
+      password !== "demo1234" ||
+      shop.disabledCustomerIds.includes(customer.id)
+    )
       return "Incorrect customer email or password.";
     shop.recordLogin(customer.id);
     shop.selectCustomer(customer.id);
@@ -256,13 +321,21 @@ export default function App() {
     }
     setSession(null);
     pendingRoute.current = null;
-    navigate(session?.role === "admin" ? { role: "login", loginRole: "admin" } : { role: "customer", page: "home" }, true);
+    navigate(
+      session?.role === "admin"
+        ? { role: "login", loginRole: "admin" }
+        : { role: "customer", page: "home" },
+      true,
+    );
     notify("Signed out.", "info");
   };
 
   const addToCart = (productId: string) => {
     if (session?.role !== "customer") {
-      pendingRoute.current = route.role === "customer" ? route : { role: "customer", page: "products" };
+      pendingRoute.current =
+        route.role === "customer"
+          ? route
+          : { role: "customer", page: "products" };
       navigate({ role: "login", loginRole: "customer" });
       return;
     }
@@ -278,8 +351,14 @@ export default function App() {
 
   const confirmAddToCart = (qty: number) => {
     const product = shop.products.find((p) => p.id === pendingProductId);
-    const inCart = shop.cart.find((item) => item.productId === pendingProductId)?.qty ?? 0;
-    if (!product || !Number.isInteger(qty) || qty < 1 || product.stock < inCart + qty) {
+    const inCart =
+      shop.cart.find((item) => item.productId === pendingProductId)?.qty ?? 0;
+    if (
+      !product ||
+      !Number.isInteger(qty) ||
+      qty < 1 ||
+      product.stock < inCart + qty
+    ) {
       notify("The selected quantity is no longer available.", "error");
       return;
     }
@@ -290,26 +369,57 @@ export default function App() {
   };
 
   const cartCount = shop.cart.reduce((s, c) => s + c.qty, 0);
-  const pendingProduct = shop.products.find((product) => product.id === pendingProductId);
+  const pendingProduct = shop.products.find(
+    (product) => product.id === pendingProductId,
+  );
   const availableQty = pendingProduct
-    ? Math.max(0, pendingProduct.stock - (shop.cart.find((item) => item.productId === pendingProductId)?.qty ?? 0))
+    ? Math.max(
+        0,
+        pendingProduct.stock -
+          (shop.cart.find((item) => item.productId === pendingProductId)?.qty ??
+            0),
+      )
     : 0;
   const customerPage = route.role === "customer" ? route.page : "home";
   const adminPage = route.role === "admin" ? route.page : allowedAdminPages[0];
-  const navigateCustomer = (page: CustomerPage) => navigate({ role: "customer", page });
+  const navigateCustomer = (page: CustomerPage) =>
+    navigate({ role: "customer", page });
   const navigateAdmin = (page: AdminPage) => {
     if (allowedAdminPages.includes(page)) navigate({ role: "admin", page });
   };
 
-  if (session?.role === "customer" && shop.disabledCustomerIds.includes(session.userId)) {
+  if (
+    session?.role === "customer" &&
+    shop.disabledCustomerIds.includes(session.userId)
+  ) {
     return null;
   }
 
-  if (route.role === "login" || (session?.role === "customer" && !shop.customers.some((customer) => customer.id === session.userId))) {
-    return <LoginPage key={route.role === "login" ? route.loginRole : "customer"} initialRole={route.role === "login" ? route.loginRole : "customer"} onRoleChange={(loginRole) => navigate({ role: "login", loginRole })} onBrowse={() => { pendingRoute.current = null; navigate({ role: "customer", page: "home" }); }} onLogin={login} onRegister={register} />;
+  if (
+    route.role === "login" ||
+    (session?.role === "customer" &&
+      !shop.customers.some((customer) => customer.id === session.userId))
+  ) {
+    return (
+      <LoginPage
+        key={route.role === "login" ? route.loginRole : "customer"}
+        initialRole={route.role === "login" ? route.loginRole : "customer"}
+        onRoleChange={(loginRole) => navigate({ role: "login", loginRole })}
+        onBrowse={() => {
+          pendingRoute.current = null;
+          navigate({ role: "customer", page: "home" });
+        }}
+        onLogin={login}
+        onRegister={register}
+      />
+    );
   }
 
-  if (!session && (route.role === "admin" || (route.role === "customer" && !guestPages.includes(route.page)))) {
+  if (
+    !session &&
+    (route.role === "admin" ||
+      (route.role === "customer" && !guestPages.includes(route.page)))
+  ) {
     return null;
   }
 
@@ -324,10 +434,20 @@ export default function App() {
   if (session?.role === "admin") {
     if (!adminUser || !allowedAdminPages.includes(adminPage)) return null;
     return (
-      <AdminLayout page={adminPage} onNav={navigateAdmin} onLogout={logout} allowedPages={allowedAdminPages} userName={adminUser.name} userRoleLabel={shop.roleLabels[adminUser.role] ?? adminUser.role}>
+      <AdminLayout
+        page={adminPage}
+        onNav={navigateAdmin}
+        onLogout={logout}
+        allowedPages={allowedAdminPages}
+        userName={adminUser.name}
+        userRoleLabel={shop.roleLabels[adminUser.role] ?? adminUser.role}
+      >
         {adminPage === "dashboard" && <AdminDashboardPage />}
         {adminPage === "customers" && <AdminCustomersPage />}
         {adminPage === "products" && <AdminProductsPage />}
+        {adminPage === "categories" && (
+          <AdminCategoriesPage actorId={adminUser.id} />
+        )}
         {adminPage === "orders" && <AdminOrdersPage />}
         {adminPage === "points" && <AdminPointsPage />}
         {adminPage === "tiers" && <AdminTiersPage />}
@@ -335,18 +455,30 @@ export default function App() {
         {adminPage === "rewards" && <AdminRewardsPage />}
         {adminPage === "badges" && <AdminBadgesPage />}
         {adminPage === "referrals" && <AdminReferralsPage />}
-        {adminPage === "stock-alerts" && <AdminStockAlertsPage actorId={adminUser.id} onNav={navigateAdmin} />}
+        {adminPage === "stock-alerts" && (
+          <AdminStockAlertsPage actorId={adminUser.id} onNav={navigateAdmin} />
+        )}
         {adminPage === "stock" && <AdminStockPage actorId={adminUser.id} />}
-        {adminPage === "stock-movements" && <AdminStockMovementsPage actorId={adminUser.id} />}
-        {adminPage === "fulfillment" && <AdminFulfillmentPage actorId={adminUser.id} />}
-        {adminPage === "stocktake" && <AdminStocktakePage actorId={adminUser.id} />}
+        {adminPage === "stock-movements" && (
+          <AdminStockMovementsPage actorId={adminUser.id} />
+        )}
+        {adminPage === "fulfillment" && (
+          <AdminFulfillmentPage actorId={adminUser.id} />
+        )}
+        {adminPage === "stocktake" && (
+          <AdminStocktakePage actorId={adminUser.id} />
+        )}
         {adminPage === "stock-reports" && <AdminStockReportsPage />}
-        {adminPage === "suppliers" && <AdminSuppliersPage actorId={adminUser.id} />}
+        {adminPage === "suppliers" && (
+          <AdminSuppliersPage actorId={adminUser.id} />
+        )}
         {adminPage === "logs" && <AdminActivityLogsPage />}
         {adminPage === "analytics" && <AdminAnalyticsPage />}
         {adminPage === "users" && <AdminUsersPage actorId={adminUser.id} />}
         {adminPage === "roles" && <AdminRolesPage actorId={adminUser.id} />}
-        {adminPage === "exchange-rate" && <AdminExchangeRatePage actorId={adminUser.id} />}
+        {adminPage === "exchange-rate" && (
+          <AdminExchangeRatePage actorId={adminUser.id} />
+        )}
         {adminPage === "profile" && <AdminProfilePage userId={adminUser.id} />}
       </AdminLayout>
     );
@@ -369,9 +501,18 @@ export default function App() {
           onSignIn={() => navigate({ role: "login", loginRole: "customer" })}
         />
       )}
-      {customerPage === "products" && <ProductsPage onAddToCart={addToCart} guest={!session} />}
+      {customerPage === "products" && (
+        <ProductsPage onAddToCart={addToCart} guest={!session} />
+      )}
       {customerPage === "cart" && (
-        <CartPage onNav={(page) => navigateCustomer(page as CustomerPage)} guest={!session} onSignIn={() => { pendingRoute.current = { role: "customer", page: "cart" }; navigate({ role: "login", loginRole: "customer" }); }} />
+        <CartPage
+          onNav={(page) => navigateCustomer(page as CustomerPage)}
+          guest={!session}
+          onSignIn={() => {
+            pendingRoute.current = { role: "customer", page: "cart" };
+            navigate({ role: "login", loginRole: "customer" });
+          }}
+        />
       )}
       {customerPage === "orders" && <OrdersPage />}
       {customerPage === "rewards" && <RewardsPage />}

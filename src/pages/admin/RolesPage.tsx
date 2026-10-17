@@ -16,7 +16,7 @@ const roleDescriptions: Record<string, string> = {
 };
 const permissionGroups: { title: string; description: string; pages: AdminPage[] }[] = [
   { title: "Overview", description: "Monitor the business at a glance.", pages: ["dashboard", "analytics"] },
-  { title: "Commerce", description: "Manage customers and store activity.", pages: ["customers", "products", "orders"] },
+  { title: "Commerce", description: "Manage customers and store activity.", pages: ["customers", "products", "categories", "orders"] },
   { title: "Loyalty programs", description: "Run points, rewards, and promotions.", pages: ["points", "tiers", "campaigns", "rewards", "badges", "referrals"] },
   { title: "Inventory", description: "Reward stock, fulfilment, and counts.", pages: inventoryPages },
   { title: "Operations", description: "Review administrative activity.", pages: ["logs"] },
@@ -27,6 +27,7 @@ const pageDetails: Partial<Record<AdminPage, { icon: string; description: string
   analytics: { icon: "chart", description: "Reports and trends" },
   customers: { icon: "users", description: "Customer accounts" },
   products: { icon: "products", description: "Catalog and stock" },
+  categories: { icon: "category", description: "Product categories" },
   orders: { icon: "orders", description: "Purchases and fulfillment" },
   points: { icon: "star", description: "Points balances and adjustments" },
   tiers: { icon: "trophy", description: "Membership tiers" },

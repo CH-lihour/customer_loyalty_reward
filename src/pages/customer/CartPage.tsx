@@ -3,7 +3,15 @@ import { useShop } from "../../data/shop";
 import { useFeedback } from "../../components/FeedbackProvider";
 import { Icon } from "../../components/Icon";
 
-export function CartPage({ onNav, guest = false, onSignIn }: { onNav: (page: string) => void; guest?: boolean; onSignIn?: () => void }) {
+export function CartPage({
+  onNav,
+  guest = false,
+  onSignIn,
+}: {
+  onNav: (page: string) => void;
+  guest?: boolean;
+  onSignIn?: () => void;
+}) {
   const shop = useShop();
   const { notify } = useFeedback();
   const [checkingOut, setCheckingOut] = useState(false);
@@ -61,7 +69,10 @@ export function CartPage({ onNav, guest = false, onSignIn }: { onNav: (page: str
   if (!items.length)
     return (
       <div className="text-center py-24 space-y-4">
-        <Icon name="cart" className="mx-auto h-12 w-12 text-[var(--gold-mid)]" />
+        <Icon
+          name="cart"
+          className="mx-auto h-12 w-12 text-[var(--gold-mid)]"
+        />
         <h1 className="font-display text-2xl">Your cart is empty</h1>
         <button
           onClick={() => onNav("products")}
@@ -131,7 +142,10 @@ export function CartPage({ onNav, guest = false, onSignIn }: { onNav: (page: str
           <strong>+{points}</strong>
         </div>
         {guest ? (
-          <button onClick={onSignIn} className="w-full rounded-lg bg-[var(--gold-mid)] text-[var(--background)] py-3 font-semibold">
+          <button
+            onClick={onSignIn}
+            className="w-full rounded-lg bg-[var(--gold-mid)] text-[var(--background)] py-3 font-semibold"
+          >
             Sign in to checkout
           </button>
         ) : !checkingOut ? (

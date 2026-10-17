@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react"
-import { categories, type Product } from "../../data/mockData"
+import type { Product } from "../../data/mockData"
 import { useShop } from "../../data/shop"
 import { useFeedback } from "../../components/FeedbackProvider"
 import { AdminModal } from "../../components/AdminModal"
@@ -7,11 +7,11 @@ import { useModalState } from "../../components/useModalState"
 import { ActionIconButton } from "../../components/ActionIconButton"
 import { ImagePreviewDialog } from "../../components/ImagePreviewDialog"
 
-const blank = (): Product => ({
+const blank = (category: string): Product => ({
   id: "",
   name: "",
   nameKh: "",
-  category: "Coffee & Tea",
+  category,
   price: 0,
   stock: 0,
   image: "",
@@ -24,13 +24,27 @@ const input =
   "w-full rounded-lg border border-[var(--border)] bg-[var(--secondary)] px-3 py-2 text-sm"
 
 export function AdminProductsPage() {
-  const { products, saveProduct, deleteProduct } = useShop()
+  const { products, categories: categoryList, saveProduct, deleteProduct } = useShop()
   const { notify, confirm } = useFeedback()
   const [editing, setEditing, modalClosing] = useModalState<Product | null>(null)
   const [previewId, setPreviewId, previewClosing] = useModalState<string | null>(null)
   const [filter, setFilter] = useState("All")
   const [error, setError] = useState("")
   const previewProduct = products.find((product) => product.id === previewId)
+  const categories = ["All", ...categoryList.map((c) => c.name)]
+  const inactive = new Set(categoryList.filter((c) => !c.active).map((c) => c.name))
+  // An inactive category stays selectable only for products already in it.
+  const assignable = categoryList
+    .filter((c) => c.active || c.name === editing?.category)
+    .map((c) => c.name)
+  const addProduct = () => {
+    const first = categoryList.find((c) => c.active)
+    if (!first) {
+      notify("Create or activate a category before adding products.", "error")
+      return
+    }
+    setEditing(blank(first.name))
+  }
   const change = <K extends keyof Product>(key: K, value: Product[K]) =>
     setEditing((p) => (p ? { ...p, [key]: value } : p))
   const save = (event: FormEvent) => {
@@ -38,13 +52,13 @@ export function AdminProductsPage() {
     if (
       !editing ||
       !editing.name.trim() ||
-      !editing.category ||
+      !assignable.includes(editing.category) ||
       editing.price <= 0 ||
       editing.stock < 0 ||
       editing.normalPoints < 0 ||
       editing.bonusMultiplier < 1
     ) {
-      setError("Enter a name, positive price, valid stock, and point values.")
+      setError("Enter a name, category, positive price, valid stock, and point values.")
       return
     }
     saveProduct({
@@ -63,7 +77,7 @@ export function AdminProductsPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="font-display text-2xl font-semibold">Products</h1>
         <button
-          onClick={() => setEditing(blank())}
+          onClick={addProduct}
           className="rounded-lg bg-[var(--gold-mid)] px-4 py-2 text-sm font-semibold text-[var(--background)]"
         >
           + Add Product
@@ -120,11 +134,17 @@ export function AdminProductsPage() {
                   value={editing.category}
                   onChange={(e) => change("category", e.target.value)}
                 >
-                  {categories
-                    .filter((c) => c !== "All")
-                    .map((c) => (
-                      <option key={c}>{c}</option>
-                    ))}
+                  {!assignable.includes(editing.category) && (
+                    <option value={editing.category} disabled>
+                      {editing.category || "Choose a category"}
+                    </option>
+                  )}
+                  {assignable.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                      {inactive.has(c) ? " (inactive)" : ""}
+                    </option>
+                  ))}
                 </select>
               </label>
               <label className="text-xs">
@@ -252,7 +272,14 @@ export function AdminProductsPage() {
                       {p.name}
                     </div>
                   </td>
-                  <td className="p-3">{p.category}</td>
+                  <td className="p-3">
+                    {p.category}
+                    {inactive.has(p.category) && (
+                      <span className="ml-1 text-xs text-[var(--muted-foreground)]">
+                        (hidden)
+                      </span>
+                    )}
+                  </td>
                   <td className="p-3 text-right">${p.price.toFixed(2)}</td>
                   <td className="p-3 text-right">{p.stock}</td>
                   <td className="p-3 text-right">

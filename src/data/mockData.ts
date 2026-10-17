@@ -449,16 +449,24 @@ export const products: Product[] = [
   },
 ];
 
-export const categories = [
-  "All",
-  "Coffee & Tea",
-  "Snacks",
-  "Food & Grocery",
-  "Clothing",
-  "Beauty",
-  "Beverages",
-  "Electronics",
-  "Accessories",
+export interface ProductCategory {
+  id: string;
+  name: string;
+  nameKh: string;
+  description: string;
+  /** Inactive categories are hidden from the storefront and cannot be assigned to products. */
+  active: boolean;
+}
+
+export const productCategories: ProductCategory[] = [
+  { id: "cat-coffee-tea", name: "Coffee & Tea", nameKh: "កាហ្វេ និងតែ", description: "Local coffee beans, teas, and brewing goods.", active: true },
+  { id: "cat-snacks", name: "Snacks", nameKh: "អាហារសម្រន់", description: "Dried fruit, chips, and treats.", active: true },
+  { id: "cat-food-grocery", name: "Food & Grocery", nameKh: "អាហារ និងគ្រឿងទេស", description: "Pantry staples and Khmer specialties.", active: true },
+  { id: "cat-clothing", name: "Clothing", nameKh: "សម្លៀកបំពាក់", description: "Krama, silk, and apparel.", active: true },
+  { id: "cat-beauty", name: "Beauty", nameKh: "សម្ផស្ស", description: "Skincare and natural cosmetics.", active: true },
+  { id: "cat-beverages", name: "Beverages", nameKh: "ភេសជ្ជៈ", description: "Ready-to-drink juices and drinks.", active: true },
+  { id: "cat-electronics", name: "Electronics", nameKh: "គ្រឿងអេឡិចត្រូនិច", description: "Gadgets and accessories for devices.", active: true },
+  { id: "cat-accessories", name: "Accessories", nameKh: "គ្រឿងតុបតែង", description: "Handicrafts, home decor, and gifts.", active: true },
 ];
 
 export const orders: Order[] = [

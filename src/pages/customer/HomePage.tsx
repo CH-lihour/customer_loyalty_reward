@@ -10,10 +10,15 @@ interface Props {
   onSignIn?: () => void;
 }
 
-export function HomePage({ onNav, onAddToCart, guest = false, onSignIn }: Props) {
+export function HomePage({
+  onNav,
+  onAddToCart,
+  guest = false,
+  onSignIn,
+}: Props) {
   const {
     currentUser: CURRENT_USER,
-    products,
+    storefrontProducts: products,
     rewards,
     transactions,
     tiers: tierConfig,
@@ -38,39 +43,86 @@ export function HomePage({ onNav, onAddToCart, guest = false, onSignIn }: Props)
 
   const featured = products.filter((p) => p.featured).slice(0, 4);
 
-  if (guest) return (
-    <div className="flex flex-col gap-8">
-      <h1 className="font-display text-2xl font-semibold">Home</h1>
-      <section className="rounded-2xl bg-gradient-to-br from-[#272238] via-[#1c2230] to-[#111722] p-6">
-        <p className="mb-3 text-sm font-semibold text-[var(--gold-mid)]">Shop local · Earn more</p>
-        <h2 className="max-w-2xl font-display text-3xl font-semibold md:text-4xl">Discover Cambodian products and rewards</h2>
-        <p className="mt-4 max-w-xl text-sm leading-relaxed text-[var(--muted-foreground)]">Browse KhmerShop without an account. Sign in when you’re ready to place an order and earn loyalty points.</p>
-        <div className="mt-6 flex flex-wrap gap-3">
-          <button onClick={() => onNav("products")} className="rounded-lg bg-[var(--gold-mid)] px-5 py-2.5 text-sm font-semibold text-[var(--background)]">Shop products</button>
-          <button onClick={onSignIn} className="rounded-lg border border-[var(--gold-mid)]/40 px-5 py-2.5 text-sm font-semibold text-[var(--gold-mid)]">Sign in or register</button>
-        </div>
-      </section>
-      <section>
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="font-display text-xl font-semibold">Featured Products</h2>
-          <button onClick={() => onNav("products")} className="text-sm text-[var(--gold-mid)]">View all →</button>
-        </div>
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-          {featured.map((product) => (
-            <article key={product.id} className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)]">
-              <img src={product.image} alt={product.name} className="h-36 w-full object-cover" />
-              <div className="p-3">
-                <h3 className="text-sm font-medium">{product.name}</h3>
-                <p className="text-xs text-[var(--muted-foreground)]">{product.nameKh}</p>
-                <div className="mt-3 flex items-center justify-between gap-2"><strong className="text-[var(--gold-mid)]">{money(product.price)}</strong><span className="text-xs text-[var(--muted-foreground)]">+{product.normalPoints} pts</span></div>
-                <button onClick={() => onAddToCart(product.id)} disabled={product.stock < 1} className="mt-3 w-full rounded-lg bg-[var(--gold-mid)] py-2 text-xs font-semibold text-[var(--background)] disabled:opacity-40">{product.stock < 1 ? "Sold Out" : "Sign in to add"}</button>
-              </div>
-            </article>
-          ))}
-        </div>
-      </section>
-    </div>
-  );
+  if (guest)
+    return (
+      <div className="flex flex-col gap-8">
+        <h1 className="font-display text-2xl font-semibold">Home</h1>
+        <section className="rounded-2xl bg-gradient-to-br from-[#272238] via-[#1c2230] to-[#111722] p-6">
+          <p className="mb-3 text-sm font-semibold text-[var(--gold-mid)]">
+            Shop local · Earn more
+          </p>
+          <h2 className="max-w-2xl font-display text-3xl font-semibold md:text-4xl">
+            Discover Cambodian products and rewards
+          </h2>
+          <p className="mt-4 max-w-xl text-sm leading-relaxed text-[var(--muted-foreground)]">
+            Browse KhmerShop without an account. Sign in when you’re ready to
+            place an order and earn loyalty points.
+          </p>
+          <div className="mt-6 flex flex-wrap gap-3">
+            <button
+              onClick={() => onNav("products")}
+              className="rounded-lg bg-[var(--gold-mid)] px-5 py-2.5 text-sm font-semibold text-[var(--background)]"
+            >
+              Shop products
+            </button>
+            <button
+              onClick={onSignIn}
+              className="rounded-lg border border-[var(--gold-mid)]/40 px-5 py-2.5 text-sm font-semibold text-[var(--gold-mid)]"
+            >
+              Sign in or register
+            </button>
+          </div>
+        </section>
+        <section>
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="font-display text-xl font-semibold">
+              Featured Products
+            </h2>
+            <button
+              onClick={() => onNav("products")}
+              className="text-sm text-[var(--gold-mid)]"
+            >
+              View all →
+            </button>
+          </div>
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+            {featured.map((product) => (
+              <article
+                key={product.id}
+                className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)]"
+              >
+                <img
+                  src={product.image}
+                  alt={product.name}
+                  className="h-36 w-full object-cover"
+                />
+                <div className="p-3">
+                  <h3 className="text-sm font-medium">{product.name}</h3>
+                  <p className="text-xs text-[var(--muted-foreground)]">
+                    {product.nameKh}
+                  </p>
+                  <div className="mt-3 flex items-center justify-between gap-2">
+                    <strong className="text-[var(--gold-mid)]">
+                      {money(product.price)}
+                    </strong>
+                    <span className="text-xs text-[var(--muted-foreground)]">
+                      +{product.normalPoints} pts
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => onAddToCart(product.id)}
+                    disabled={product.stock < 1}
+                    className="mt-3 w-full rounded-lg bg-[var(--gold-mid)] py-2 text-xs font-semibold text-[var(--background)] disabled:opacity-40"
+                  >
+                    {product.stock < 1 ? "Sold Out" : "Sign in to add"}
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+      </div>
+    );
 
   return (
     <div className="flex flex-col gap-8">
@@ -171,7 +223,8 @@ export function HomePage({ onNav, onAddToCart, guest = false, onSignIn }: Props)
               .filter(
                 (r) =>
                   r.active &&
-                  (availableFor(r.id) > 0 || stockItemFor(r.id).allowBackorder) &&
+                  (availableFor(r.id) > 0 ||
+                    stockItemFor(r.id).allowBackorder) &&
                   r.pointsCost <= CURRENT_USER.points &&
                   tierConfig[r.minTier].min <= tierConfig[tier].min,
               )
@@ -200,7 +253,10 @@ export function HomePage({ onNav, onAddToCart, guest = false, onSignIn }: Props)
             onClick={stat.onClick}
             className="text-left p-4 rounded-xl bg-[var(--card)] border border-[var(--border)] card-glow transition-all hover:border-[var(--gold-mid)]/30"
           >
-            <Icon name={stat.icon} className="mb-2 h-6 w-6 text-[var(--gold-mid)]" />
+            <Icon
+              name={stat.icon}
+              className="mb-2 h-6 w-6 text-[var(--gold-mid)]"
+            />
             <div className="font-mono-data text-lg font-semibold text-[var(--gold-mid)]">
               {stat.value}
             </div>
@@ -312,7 +368,10 @@ export function HomePage({ onNav, onAddToCart, guest = false, onSignIn }: Props)
                 key={b.text}
                 className="flex items-center gap-2 text-[var(--muted-foreground)]"
               >
-                <Icon name={b.icon} className="h-4 w-4 shrink-0 text-[var(--gold-mid)]" />
+                <Icon
+                  name={b.icon}
+                  className="h-4 w-4 shrink-0 text-[var(--gold-mid)]"
+                />
                 {b.text}
               </div>
             ))}
@@ -326,7 +385,10 @@ export function HomePage({ onNav, onAddToCart, guest = false, onSignIn }: Props)
                 key={b.text}
                 className="flex items-center gap-2 text-[var(--muted-foreground)]"
               >
-                <Icon name={b.icon} className="h-4 w-4 shrink-0 text-[var(--gold-mid)]" />
+                <Icon
+                  name={b.icon}
+                  className="h-4 w-4 shrink-0 text-[var(--gold-mid)]"
+                />
                 {b.text}
               </div>
             ))}
@@ -340,7 +402,10 @@ export function HomePage({ onNav, onAddToCart, guest = false, onSignIn }: Props)
                 key={b.text}
                 className="flex items-center gap-2 text-[var(--muted-foreground)]"
               >
-                <Icon name={b.icon} className="h-4 w-4 shrink-0 text-[var(--gold-mid)]" />
+                <Icon
+                  name={b.icon}
+                  className="h-4 w-4 shrink-0 text-[var(--gold-mid)]"
+                />
                 {b.text}
               </div>
             ))}

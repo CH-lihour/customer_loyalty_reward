@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { categories, type Product } from "../../data/mockData";
+import type { Product } from "../../data/mockData";
 import { useShop } from "../../data/shop";
 import { modalExitDelay, useModalState } from "../../components/useModalState";
 import { ImagePreviewDialog } from "../../components/ImagePreviewDialog";
@@ -54,8 +54,17 @@ function ProductDetail({
         className="product-dialog"
       >
         <div className="relative h-52 bg-[var(--secondary)] sm:h-64">
-          <button type="button" onClick={() => setImageOpen(true)} aria-label={`Inspect image of ${product.name}`} className="h-full w-full cursor-zoom-in">
-            <img src={product.image} alt={product.name} className="h-full w-full object-cover" />
+          <button
+            type="button"
+            onClick={() => setImageOpen(true)}
+            aria-label={`Inspect image of ${product.name}`}
+            className="h-full w-full cursor-zoom-in"
+          >
+            <img
+              src={product.image}
+              alt={product.name}
+              className="h-full w-full object-cover"
+            />
           </button>
           <button
             type="button"
@@ -99,21 +108,42 @@ function ProductDetail({
             }}
             className="w-full rounded-lg bg-[var(--gold-mid)] py-2 font-semibold text-[var(--background)] disabled:opacity-40"
           >
-            {product.stock < 1 ? "Out of Stock" : guest ? "Sign in to add" : "Add to Cart"}
+            {product.stock < 1
+              ? "Out of Stock"
+              : guest
+                ? "Sign in to add"
+                : "Add to Cart"}
           </button>
         </div>
       </section>
-      {imageOpen && <ImagePreviewDialog image={product.image} name={product.name} onClose={() => setImageOpen(false)} closing={imageClosing} />}
+      {imageOpen && (
+        <ImagePreviewDialog
+          image={product.image}
+          name={product.name}
+          onClose={() => setImageOpen(false)}
+          closing={imageClosing}
+        />
+      )}
     </div>,
     document.body,
   );
 }
 
 export function ProductsPage({ onAddToCart, guest = false }: Props) {
-  const { products, money } = useShop();
+  const {
+    storefrontProducts: products,
+    categories: categoryList,
+    money,
+  } = useShop();
+  const categories = [
+    "All",
+    ...categoryList.filter((c) => c.active).map((c) => c.name),
+  ];
   const [activeCategory, setActiveCategory] = useState("All");
   const [search, setSearch] = useState("");
-  const [selectedId, setSelectedId, detailClosing] = useModalState<string | null>(null);
+  const [selectedId, setSelectedId, detailClosing] = useModalState<
+    string | null
+  >(null);
   const selected = products.find((p) => p.id === selectedId);
   const filtered = products.filter((product) => {
     const matchesCategory =
@@ -224,7 +254,11 @@ export function ProductsPage({ onAddToCart, guest = false }: Props) {
                   disabled={product.stock < 1}
                   className="rounded-lg bg-[var(--gold-mid)] py-2 text-xs font-semibold text-[var(--background)] disabled:opacity-40"
                 >
-                  {product.stock < 1 ? "Sold Out" : guest ? "Sign in to add" : "Add to Cart"}
+                  {product.stock < 1
+                    ? "Sold Out"
+                    : guest
+                      ? "Sign in to add"
+                      : "Add to Cart"}
                 </button>
               </div>
             </div>

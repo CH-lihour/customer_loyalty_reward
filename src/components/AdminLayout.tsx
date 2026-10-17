@@ -14,6 +14,7 @@ const navItems: {
   { id: "analytics", label: "Analytics", icon: "chart", group: "Overview" },
   { id: "customers", label: "Customers", icon: "users", group: "E-Commerce" },
   { id: "products", label: "Products", icon: "products", group: "E-Commerce" },
+  { id: "categories", label: "Categories", icon: "category", group: "E-Commerce" },
   { id: "orders", label: "Orders", icon: "orders", group: "E-Commerce" },
   { id: "points", label: "Points", icon: "star", group: "Loyalty" },
   { id: "tiers", label: "Tiers", icon: "trophy", group: "Loyalty" },

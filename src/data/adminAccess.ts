@@ -1,5 +1,5 @@
 export type AdminPage =
-  | "dashboard" | "analytics" | "customers" | "products" | "orders"
+  | "dashboard" | "analytics" | "customers" | "products" | "categories" | "orders"
   | "points" | "tiers" | "campaigns" | "rewards" | "badges"
   | "referrals" | "stock-alerts" | "stock" | "stock-movements" | "fulfillment"
   | "stocktake" | "stock-reports" | "suppliers"
@@ -17,7 +17,7 @@ export type AdminUser = {
 
 export const adminPageLabels: Record<AdminPage, string> = {
   dashboard: "Dashboard", analytics: "Analytics", customers: "Customers",
-  products: "Products", orders: "Orders", points: "Points", tiers: "Tiers",
+  products: "Products", categories: "Categories", orders: "Orders", points: "Points", tiers: "Tiers",
   campaigns: "Campaigns", rewards: "Rewards", badges: "Badges",
   referrals: "Referrals", "stock-alerts": "Low Stock", stock: "Stock Levels",
   "stock-movements": "Stock Movements", fulfillment: "Redemption Fulfilment",
@@ -43,7 +43,7 @@ export const adminPages = Object.keys(adminPageLabels) as AdminPage[];
 
 export const defaultRolePermissions: Record<AdminRole, AdminPage[]> = {
   super_admin: adminPages,
-  marketing_manager: ["dashboard", "analytics", "products", "campaigns", "rewards", "profile"],
+  marketing_manager: ["dashboard", "analytics", "products", "categories", "campaigns", "rewards", "profile"],
   loyalty_manager: ["dashboard", "customers", "points", "tiers", "rewards", "badges", "referrals", "logs", "analytics", "profile"],
   stock_manager: ["dashboard", "rewards", ...inventoryPages, "profile"],
   stock_clerk: ["stock-alerts", "stock", "stock-movements", "fulfillment", "stocktake", "profile"],
