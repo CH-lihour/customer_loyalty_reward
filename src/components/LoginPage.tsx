@@ -3,62 +3,39 @@ import { useFeedback } from "./FeedbackProvider";
 import { Icon } from "./Icon";
 
 export type LoginRole = "customer" | "admin";
-export type Registration = {
-  name: string;
-  email: string;
-  phone: string;
-  province: string;
-  referralCode: string;
-};
 
 interface Props {
   initialRole?: LoginRole;
   onRoleChange?: (role: LoginRole) => void;
-  onLogin: (role: LoginRole, email: string, password: string) => string | null;
-  onRegister: (fields: Registration) => string | null;
+  onLogin: (role: LoginRole, email: string, password: string) => Promise<string | null>;
   onBrowse: () => void;
 }
 
 const inputClass =
   "w-full rounded-xl border border-[var(--border)] bg-[var(--secondary)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition-colors placeholder:text-[var(--muted-foreground)] focus:border-[var(--gold-mid)]";
-const provinces = [
-  "Phnom Penh",
-  "Siem Reap",
-  "Battambang",
-  "Kampong Cham",
-  "Kampot",
-  "Sihanoukville",
-  "Kandal",
-  "Takeo",
-];
 
-export function LoginPage({ initialRole = "customer", onRoleChange, onLogin, onRegister, onBrowse }: Props) {
+export function LoginPage({ initialRole = "customer", onRoleChange, onLogin, onBrowse }: Props) {
   const { notify } = useFeedback();
   const [role, setRole] = useState<LoginRole>(initialRole);
-  const [registering, setRegistering] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [registration, setRegistration] = useState<Registration>({
-    name: "",
-    email: "",
-    phone: "",
-    province: "Phnom Penh",
-    referralCode: "",
-  });
+  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
   const chooseRole = (next: LoginRole) => {
     setRole(next);
     onRoleChange?.(next);
-    setRegistering(false);
     setError("");
     setEmail("");
     setPassword("");
   };
-  const submitLogin = (event: FormEvent<HTMLFormElement>) => {
+  const submitLogin = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const result = onLogin(role, email.trim(), password);
+    if (submitting) return;
+    setSubmitting(true);
+    const result = await onLogin(role, email.trim(), password);
+    setSubmitting(false);
     if (result) {
       setError(result);
       notify(result, "error");
@@ -71,24 +48,6 @@ export function LoginPage({ initialRole = "customer", onRoleChange, onLogin, onR
         "success",
       );
     }
-  };
-  const submitRegistration = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const result = onRegister(registration);
-    if (result) {
-      setError(result);
-      notify(result, "error");
-    } else {
-      setError("");
-      notify("Demo customer account created.", "success");
-    }
-  };
-  const useDemo = () => {
-    setEmail(
-      role === "admin" ? "admin@khmershop.local" : "sophea.chan@gmail.com",
-    );
-    setPassword(role === "admin" ? "admin1234" : "demo1234");
-    setError("");
   };
 
   return (
@@ -120,8 +79,7 @@ export function LoginPage({ initialRole = "customer", onRoleChange, onLogin, onR
             </p>
           </div>
           <p className="relative text-xs text-[#9e9da7]">
-            Frontend demo sign-in · Accounts and sessions are stored in this
-            browser only.
+            One account for every visit · Points follow you everywhere.
           </p>
         </aside>
 
@@ -129,221 +87,80 @@ export function LoginPage({ initialRole = "customer", onRoleChange, onLogin, onR
           <div className="animate-page-enter w-full max-w-md">
             <div className="mb-7">
               <h2 className="font-display text-2xl font-semibold">
-                {registering
-                  ? "Create customer account"
-                  : role === "admin"
-                    ? "Admin sign in"
-                    : "Customer sign in"}
+                {role === "admin" ? "Admin sign in" : "Customer sign in"}
               </h2>
               <p className="mt-1 text-sm text-[var(--muted-foreground)]">
-                {registering
-                  ? "Create a local demo account to explore KhmerShop."
-                  : "Choose your portal and enter your demo credentials."}
+                Choose your portal and sign in with your KhmerShop account.
               </p>
             </div>
 
-            {!registering && (
-              <div
-                className="mb-6 grid grid-cols-2 rounded-xl bg-[var(--secondary)] p-1"
-                role="tablist"
-                aria-label="Sign in as"
-              >
-                {(["customer", "admin"] as const).map((option) => (
-                  <button
-                    key={option}
-                    type="button"
-                    role="tab"
-                    aria-selected={role === option}
-                    onClick={() => chooseRole(option)}
-                    className={`rounded-lg px-4 py-2.5 text-sm font-semibold ${role === option ? "bg-[var(--gold-mid)] text-[var(--background)]" : "text-[var(--muted-foreground)]"}`}
-                  >
-                    {option === "customer" ? "Customer" : "Admin"}
-                  </button>
-                ))}
-              </div>
-            )}
+            <div
+              className="mb-6 grid grid-cols-2 rounded-xl bg-[var(--secondary)] p-1"
+              role="tablist"
+              aria-label="Sign in as"
+            >
+              {(["customer", "admin"] as const).map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  role="tab"
+                  aria-selected={role === option}
+                  onClick={() => chooseRole(option)}
+                  className={`rounded-lg px-4 py-2.5 text-sm font-semibold ${role === option ? "bg-[var(--gold-mid)] text-[var(--background)]" : "text-[var(--muted-foreground)]"}`}
+                >
+                  {option === "customer" ? "Customer" : "Admin"}
+                </button>
+              ))}
+            </div>
 
-            {registering ? (
-              <form onSubmit={submitRegistration} className="space-y-4">
-                <label className="block text-sm">
-                  Full name
+            <form onSubmit={submitLogin} className="space-y-4">
+              <label className="block text-sm">
+                Email
+                <input
+                  required
+                  type="email"
+                  autoComplete="username"
+                  className={`mt-1 ${inputClass}`}
+                  placeholder="you@example.com"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                />
+              </label>
+              <label className="block text-sm">
+                Password
+                <div className="relative mt-1">
                   <input
                     required
-                    autoComplete="name"
-                    className={`mt-1 ${inputClass}`}
-                    value={registration.name}
-                    onChange={(event) =>
-                      setRegistration((fields) => ({
-                        ...fields,
-                        name: event.target.value,
-                      }))
-                    }
+                    type={showPassword ? "text" : "password"}
+                    autoComplete="current-password"
+                    className={`${inputClass} pr-16`}
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
                   />
-                </label>
-                <label className="block text-sm">
-                  Email
-                  <input
-                    required
-                    type="email"
-                    autoComplete="email"
-                    className={`mt-1 ${inputClass}`}
-                    value={registration.email}
-                    onChange={(event) =>
-                      setRegistration((fields) => ({
-                        ...fields,
-                        email: event.target.value,
-                      }))
-                    }
-                  />
-                </label>
-                <label className="block text-sm">
-                  Phone
-                  <input
-                    required
-                    autoComplete="tel"
-                    className={`mt-1 ${inputClass}`}
-                    value={registration.phone}
-                    onChange={(event) =>
-                      setRegistration((fields) => ({
-                        ...fields,
-                        phone: event.target.value,
-                      }))
-                    }
-                  />
-                </label>
-                <label className="block text-sm">
-                  Province
-                  <select
-                    className={`mt-1 ${inputClass}`}
-                    value={registration.province}
-                    onChange={(event) =>
-                      setRegistration((fields) => ({
-                        ...fields,
-                        province: event.target.value,
-                      }))
-                    }
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((value) => !value)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-[var(--gold-mid)]"
                   >
-                    {provinces.map((province) => (
-                      <option key={province}>{province}</option>
-                    ))}
-                  </select>
-                </label>
-                <label className="block text-sm">
-                  Referral code{" "}
-                  <span className="text-[var(--muted-foreground)]">
-                    (optional)
-                  </span>
-                  <input
-                    className={`mt-1 ${inputClass}`}
-                    value={registration.referralCode}
-                    onChange={(event) =>
-                      setRegistration((fields) => ({
-                        ...fields,
-                        referralCode: event.target.value,
-                      }))
-                    }
-                  />
-                </label>
-                <p className="text-xs text-[var(--muted-foreground)]">
-                  Demo accounts use the shared customer password{" "}
-                  <code className="text-[var(--gold-mid)]">demo1234</code>.
+                    {showPassword ? "Hide" : "Show"}
+                  </button>
+                </div>
+              </label>
+              {error && (
+                <p role="alert" className="text-sm text-red-400">
+                  {error}
                 </p>
-                {error && (
-                  <p role="alert" className="text-sm text-red-400">
-                    {error}
-                  </p>
-                )}
-                <button
-                  type="submit"
-                  className="w-full rounded-xl bg-[var(--gold-mid)] py-3 font-semibold text-[var(--background)]"
-                >
-                  Create account
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setRegistering(false);
-                    setError("");
-                  }}
-                  className="w-full py-1 text-sm text-[var(--gold-mid)]"
-                >
-                  Back to sign in
-                </button>
-              </form>
-            ) : (
-              <form onSubmit={submitLogin} className="space-y-4">
-                <label className="block text-sm">
-                  Email
-                  <input
-                    required
-                    type="email"
-                    autoComplete="username"
-                    className={`mt-1 ${inputClass}`}
-                    placeholder={
-                      role === "admin"
-                        ? "admin@khmershop.local"
-                        : "you@example.com"
-                    }
-                    value={email}
-                    onChange={(event) => setEmail(event.target.value)}
-                  />
-                </label>
-                <label className="block text-sm">
-                  Password
-                  <div className="relative mt-1">
-                    <input
-                      required
-                      type={showPassword ? "text" : "password"}
-                      autoComplete="current-password"
-                      className={`${inputClass} pr-16`}
-                      value={password}
-                      onChange={(event) => setPassword(event.target.value)}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword((value) => !value)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-[var(--gold-mid)]"
-                    >
-                      {showPassword ? "Hide" : "Show"}
-                    </button>
-                  </div>
-                </label>
-                {error && (
-                  <p role="alert" className="text-sm text-red-400">
-                    {error}
-                  </p>
-                )}
-                <button
-                  type="submit"
-                  className="w-full rounded-xl bg-[var(--gold-mid)] py-3 font-semibold text-[var(--background)]"
-                >
-                  Sign in as {role === "admin" ? "Admin" : "Customer"}
-                </button>
-                <button
-                  type="button"
-                  onClick={useDemo}
-                  className="w-full rounded-xl border border-[var(--border)] py-2.5 text-sm text-[var(--gold-mid)]"
-                >
-                  Fill demo credentials
-                </button>
-                {role === "admin" && <p className="text-center text-xs text-[var(--muted-foreground)]">Staff demo accounts use password admin1234. Inventory roles: stock.manager@khmershop.local and stock.clerk@khmershop.local.</p>}
-                {role === "customer" && (
-                  <p className="pt-2 text-center text-sm text-[var(--muted-foreground)]">
-                    New customer?{" "}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setRegistering(true);
-                        setError("");
-                      }}
-                      className="font-semibold text-[var(--gold-mid)]"
-                    >
-                      Create a demo account
-                    </button>
-                  </p>
-                )}
-              </form>
-            )}
+              )}
+              <button
+                type="submit"
+                disabled={submitting}
+                className="w-full rounded-xl bg-[var(--gold-mid)] py-3 font-semibold text-[var(--background)] disabled:opacity-60"
+              >
+                {submitting
+                  ? "Signing in…"
+                  : `Sign in as ${role === "admin" ? "Admin" : "Customer"}`}
+              </button>
+            </form>
             <button type="button" onClick={onBrowse} className="mt-5 w-full py-2 text-sm text-[var(--gold-mid)] hover:underline">
               Continue browsing the shop
             </button>

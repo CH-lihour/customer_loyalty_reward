@@ -1,16 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { useShop } from "./data/shop";
 import { useFeedback } from "./components/FeedbackProvider";
-import {
-  LoginPage,
-  type LoginRole,
-  type Registration,
-} from "./components/LoginPage";
+import { LoginPage, type LoginRole } from "./components/LoginPage";
 import { CustomerLayout } from "./components/CustomerLayout";
 import { AddToCartDialog } from "./components/AddToCartDialog";
 import { useModalState } from "./components/useModalState";
 import { AdminLayout, type AdminPage } from "./components/AdminLayout";
-import { adminPages } from "./data/adminAccess";
+import { adminPages, type AdminRole } from "./data/adminAccess";
+import { ApiError, apiLogin, apiLogout, apiProfile, type ApiProfile } from "./data/api";
 
 import { HomePage } from "./pages/customer/HomePage";
 import { ProductsPage } from "./pages/customer/ProductsPage";
@@ -59,9 +56,7 @@ type CustomerPage =
   | "badges"
   | "referrals"
   | "profile";
-type Session =
-  | { role: "admin"; userId: string }
-  | { role: "customer"; userId: string };
+type Session = { role: LoginRole; userId: string; token: string };
 const sessionKey = "khmershop-demo-session";
 type Route =
   | { role: "customer"; page: CustomerPage }
@@ -130,18 +125,12 @@ function readSession(): Session | null {
     const stored = sessionStorage.getItem(sessionKey);
     if (!stored) return null;
     const session = JSON.parse(stored) as Partial<Session>;
-    if (session.role === "admin")
-      return {
-        role: "admin",
-        userId:
-          typeof session.userId === "string" ? session.userId : "admin-super",
-      };
     if (
-      session.role === "customer" &&
-      "userId" in session &&
-      typeof session.userId === "string"
+      (session.role === "admin" || session.role === "customer") &&
+      typeof session.userId === "string" &&
+      typeof session.token === "string"
     )
-      return { role: "customer", userId: session.userId };
+      return { role: session.role, userId: session.userId, token: session.token };
   } catch {
     /* A fresh login is always available. */
   }
@@ -154,6 +143,8 @@ export default function App() {
   const [pendingProductId, setPendingProductId, cartDialogClosing] =
     useModalState<string | null>(null);
   const pendingRoute = useRef<Route | null>(null);
+  // The API token last confirmed by the server, so each one is checked once.
+  const verifiedToken = useRef<string | null>(null);
   const shop = useShop();
   const { notify } = useFeedback();
   const adminUser =
@@ -241,21 +232,59 @@ export default function App() {
     }
   }, [session, shop.currentUserId, shop.customers, shop.selectCustomer]);
 
-  const beginSession = (next: Session) => {
+  const storeSession = (next: Session | null) => {
     try {
-      sessionStorage.setItem(sessionKey, JSON.stringify(next));
+      if (next) sessionStorage.setItem(sessionKey, JSON.stringify(next));
+      else sessionStorage.removeItem(sessionKey);
     } catch {
-      /* Session stays active until refresh. */
+      /* The in-memory session still applies until refresh. */
     }
     setSession(next);
+  };
+
+  // A stored session is only trusted once the API accepts its token again.
+  useEffect(() => {
+    if (!session || verifiedToken.current === session.token) return;
+    const { role, token } = session;
+    verifiedToken.current = token;
+    apiProfile(role, token).then(
+      (profile) => {
+        const userId =
+          role === "admin"
+            ? shop.linkApiAdmin(profile)
+            : shop.linkApiCustomer(profile);
+        setSession((current) => {
+          if (current?.token !== token || current.userId === userId)
+            return current;
+          const next = { ...current, userId };
+          try {
+            sessionStorage.setItem(sessionKey, JSON.stringify(next));
+          } catch {
+            /* The in-memory session still applies until refresh. */
+          }
+          return next;
+        });
+      },
+      (error) => {
+        verifiedToken.current = null;
+        if (readSession()?.token === token) storeSession(null);
+        notify(
+          error instanceof ApiError && error.status === 0
+            ? error.message
+            : "Your session has expired. Please sign in again.",
+          "error",
+        );
+      },
+    );
+  }, [session]);
+
+  const beginSession = (next: Session, adminRole?: AdminRole) => {
+    verifiedToken.current = next.token;
+    storeSession(next);
     const destination = pendingRoute.current;
     pendingRoute.current = null;
-    const nextAdmin =
-      next.role === "admin"
-        ? shop.adminUsers.find((user) => user.id === next.userId)
-        : undefined;
-    const nextAdminPages = nextAdmin
-      ? (shop.rolePermissions[nextAdmin.role] ?? [])
+    const nextAdminPages = adminRole
+      ? (shop.rolePermissions[adminRole] ?? [])
       : [];
     const canResume =
       !!destination &&
@@ -273,53 +302,49 @@ export default function App() {
     );
   };
 
-  const login = (
+  const login = async (
     role: LoginRole,
     email: string,
     password: string,
-  ): string | null => {
+  ): Promise<string | null> => {
+    let token: string;
+    let profile: ApiProfile;
+    try {
+      token = await apiLogin(role, email, password);
+      profile = await apiProfile(role, token);
+    } catch (error) {
+      return error instanceof ApiError ? error.message : "Sign in failed.";
+    }
+    // Accounts disabled in the demo admin stay locked out; drop the new token.
+    const reject = (message: string) => {
+      apiLogout(role, token).catch(() => {});
+      return message;
+    };
     if (role === "admin") {
-      const admin = shop.adminUsers.find(
-        (user) =>
-          user.email.toLowerCase() === email.toLowerCase() && user.active,
+      const existing = shop.adminUsers.find(
+        (user) => user.email.toLowerCase() === profile.email.toLowerCase(),
       );
-      if (!admin || password !== "admin1234")
-        return "Incorrect admin email or password.";
-      shop.recordLogin(null, admin.id);
-      beginSession({ role: "admin", userId: admin.id });
+      if (existing && !existing.active)
+        return reject("This staff account has been disabled.");
+      const userId = shop.linkApiAdmin(profile);
+      shop.recordLogin(null, userId);
+      beginSession({ role: "admin", userId, token }, existing?.role ?? "super_admin");
       return null;
     }
-    const customer = shop.customers.find(
-      (item) => item.email.toLowerCase() === email.toLowerCase(),
-    );
-    if (
-      !customer ||
-      password !== "demo1234" ||
-      shop.disabledCustomerIds.includes(customer.id)
-    )
-      return "Incorrect customer email or password.";
-    shop.recordLogin(customer.id);
-    shop.selectCustomer(customer.id);
-    beginSession({ role: "customer", userId: customer.id });
-    return null;
-  };
-
-  const register = (fields: Registration): string | null => {
-    const result = shop.registerCustomer(fields);
-    if (result.error || !result.userId)
-      return result.error ?? "Could not create the demo account.";
-    beginSession({ role: "customer", userId: result.userId });
+    const userId = shop.linkApiCustomer(profile);
+    if (shop.disabledCustomerIds.includes(userId))
+      return reject("This account has been deactivated.");
+    shop.recordLogin(userId);
+    shop.selectCustomer(userId);
+    beginSession({ role: "customer", userId, token });
     return null;
   };
 
   const logout = () => {
     shop.setCart([]);
-    try {
-      sessionStorage.removeItem(sessionKey);
-    } catch {
-      /* In-memory logout still works. */
-    }
-    setSession(null);
+    if (session) apiLogout(session.role, session.token).catch(() => {});
+    verifiedToken.current = null;
+    storeSession(null);
     pendingRoute.current = null;
     navigate(
       session?.role === "admin"
@@ -410,7 +435,6 @@ export default function App() {
           navigate({ role: "customer", page: "home" });
         }}
         onLogin={login}
-        onRegister={register}
       />
     );
   }

@@ -30,6 +30,7 @@ import {
   type Tier,
 } from "./mockData";
 import { extraCustomers, extraProducts } from "./seedExtras";
+import type { ApiProfile } from "./api";
 import {
   adminPages,
   defaultAdminRoleLabels,
@@ -685,6 +686,10 @@ type Shop = State & {
   }) => { error?: string; userId?: string };
   selectCustomer: (id: string) => void;
   recordLogin: (userId: string | null, adminUserId?: string) => void;
+  /** Returns the demo customer for an API account, creating one by email if needed. */
+  linkApiCustomer: (profile: ApiProfile) => string;
+  /** Returns the demo staff user for an API account; new ones get Super Admin until the API sends roles. */
+  linkApiAdmin: (profile: ApiProfile) => string;
   stockLevels: StockLevel[];
   /** Redeemable units across active locations. */
   availableFor: (rewardId: string, variantId?: string) => number;
@@ -1858,6 +1863,56 @@ export function ShopProvider({ children }: { children: ReactNode }) {
         };
         return { ...s, logs: [entry, ...s.logs] };
       }),
+      linkApiCustomer: (profile) => {
+        const email = profile.email.trim().toLowerCase();
+        const existing = state.customers.find((c) => c.email.toLowerCase() === email);
+        if (existing) return existing.id;
+        // A stable id keeps repeated calls from adding the same account twice.
+        const id = `api-customer-${profile.id}`;
+        const points = Math.max(0, Math.floor(profile.points_balance ?? 0));
+        setState((s) => {
+          if (s.customers.some((c) => c.id === id || c.email.toLowerCase() === email)) return s;
+          const user: Customer = {
+            id,
+            name: profile.name,
+            nameKh: "",
+            email,
+            phone: profile.phone ?? "",
+            province: "",
+            avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(profile.name)}&background=262a36&color=e8a634`,
+            tier: tierFor(points, s.tiers),
+            points,
+            totalSpent: 0,
+            joinedAt: date(),
+            lastOrder: "",
+            referralCode: `KHMER-${profile.name.trim().split(" ")[0].toUpperCase()}-${String(profile.id).padStart(4, "0")}`,
+            badges: [],
+            ordersCount: 0,
+          };
+          return {
+            ...s,
+            customers: [user, ...s.customers],
+            qualifyingPoints: { ...s.qualifyingPoints, [id]: points },
+            logs: log(s, user, "API_ACCOUNT_LINKED", "Customer account linked from the API"),
+          };
+        });
+        return id;
+      },
+      linkApiAdmin: (profile) => {
+        const email = profile.email.trim().toLowerCase();
+        const existing = state.adminUsers.find((u) => u.email.toLowerCase() === email);
+        if (existing) return existing.id;
+        const id = `api-admin-${profile.id}`;
+        setState((s) => {
+          if (s.adminUsers.some((u) => u.id === id || u.email.toLowerCase() === email)) return s;
+          return {
+            ...s,
+            adminUsers: [...s.adminUsers, { id, name: profile.name, email, role: "super_admin", active: true }],
+            logs: [{ id: uid(), userId: id, userName: profile.name, event: "API_ACCOUNT_LINKED", description: `Staff user ${email} linked from the API`, timestamp: stamp() }, ...s.logs],
+          };
+        });
+        return id;
+      },
     }),
     [state, currentUser, storefrontProducts, stockLevels, commit, setState],
   );
