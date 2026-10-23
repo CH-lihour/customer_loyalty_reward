@@ -50,7 +50,7 @@ export function PointsPage() {
       <div
         className="relative overflow-hidden rounded-2xl p-6"
         style={{
-          background: "linear-gradient(135deg, #1a1e2e 0%, #1e2330 100%)",
+          background: "var(--panel-gradient)",
         }}
       >
         <div

@@ -41,7 +41,7 @@ export function AdminExchangeRatePage({ actorId }: { actorId: string }) {
   }
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
+    <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--gold-mid)]">
@@ -61,7 +61,7 @@ export function AdminExchangeRatePage({ actorId }: { actorId: string }) {
         </button>
       </div>
 
-      <section className="relative overflow-hidden rounded-2xl border border-[var(--gold-mid)]/25 bg-[linear-gradient(115deg,#272333_0%,#1c2331_55%,#161b27_100%)] p-6 shadow-[0_20px_50px_rgba(0,0,0,0.18)] sm:p-8">
+      <section className="relative overflow-hidden rounded-2xl border border-[var(--gold-mid)]/25 bg-[image:var(--hero-gradient)] p-6 shadow-[0_20px_50px_rgba(0,0,0,0.18)] sm:p-8">
         <div className="pointer-events-none absolute -right-20 -top-24 h-72 w-72 rounded-full bg-[var(--gold-mid)]/10 blur-3xl" />
         <div className="relative flex flex-col justify-between gap-8 sm:flex-row sm:items-end">
           <div>
@@ -81,7 +81,7 @@ export function AdminExchangeRatePage({ actorId }: { actorId: string }) {
               riel.
             </p>
           </div>
-          <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm sm:min-w-44">
+          <div className="rounded-xl border border-[var(--hairline)] bg-[var(--tint)] px-4 py-3 text-sm sm:min-w-44">
             <p className="text-xs text-[var(--muted-foreground)]">
               Last updated
             </p>
@@ -92,7 +92,7 @@ export function AdminExchangeRatePage({ actorId }: { actorId: string }) {
         </div>
       </section>
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.5fr)_minmax(18rem,1fr)]">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.5fr)_minmax(18rem,1fr)]">
         <section className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-5 sm:p-6">
           <div className="mb-5 flex items-start gap-3">
             <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[var(--gold-mid)]/10 text-[var(--gold-mid)]">

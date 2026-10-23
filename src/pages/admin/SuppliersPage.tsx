@@ -46,7 +46,7 @@ export function AdminSuppliersPage({ actorId }: { actorId: string }) {
   };
 
   return (
-    <div className="mx-auto flex max-w-7xl flex-col gap-5 pb-8">
+    <div className="flex flex-col gap-5 pb-8">
       <PageHeader eyebrow="Inventory" title="Suppliers & locations"
         description="Where reward stock comes from and where it is held. Locations with stock cannot be deactivated." />
 

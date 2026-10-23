@@ -51,7 +51,7 @@ export function AdminFulfillmentPage({ actorId }: { actorId: string }) {
   };
 
   return (
-    <div className="mx-auto flex max-w-7xl flex-col gap-5 pb-8">
+    <div className="flex flex-col gap-5 pb-8">
       <PageHeader eyebrow="Inventory" title="Redemption fulfilment"
         description={`Redemptions reserve stock the moment points are spent. Ship or hand over the reward to deduct it; unfulfilled reservations release after ${shop.stockSettings.reservationHours}h.`} />
       <div className="flex flex-wrap items-center justify-between gap-3">

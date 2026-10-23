@@ -70,7 +70,7 @@ export function AdminRewardsPage() {
           wide
         >
           <form onSubmit={save} className="space-y-3">
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
               <label className="text-xs">
                 Name
                 <input
@@ -180,7 +180,7 @@ export function AdminRewardsPage() {
           </form>
         </AdminModal>
       )}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {rewards.map((r) => (
           <div
             key={r.id}

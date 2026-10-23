@@ -47,7 +47,7 @@ export function HomePage({
     return (
       <div className="flex flex-col gap-8">
         <h1 className="font-display text-2xl font-semibold">Home</h1>
-        <section className="rounded-2xl bg-gradient-to-br from-[#272238] via-[#1c2230] to-[#111722] p-6">
+        <section className="rounded-2xl bg-[image:var(--hero-gradient)] p-6">
           <p className="mb-3 text-sm font-semibold text-[var(--gold-mid)]">
             Shop local · Earn more
           </p>
@@ -131,8 +131,7 @@ export function HomePage({
       <div
         className="relative overflow-hidden rounded-2xl p-6"
         style={{
-          background:
-            "linear-gradient(135deg, #1a1e2e 0%, #1e2330 50%, #16192a 100%)",
+          background: "var(--panel-gradient)",
         }}
       >
         <div

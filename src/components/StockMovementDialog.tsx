@@ -133,7 +133,7 @@ export function StockMovementDialog({ actorId, mode, preset = {}, onClose, closi
             ))}
           </div>
         )}
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <label className="text-xs sm:col-span-2 lg:col-span-1">
             Reward item
             <select className={field} value={rewardId} disabled={linked} onChange={(e) => chooseReward(e.target.value)}>
@@ -246,7 +246,7 @@ export function StockMovementDialog({ actorId, mode, preset = {}, onClose, closi
         )}
 
         {mode === "receive" && (
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <label className="text-xs">
               Source
               <select className={field} value={source} onChange={(e) => setSource(e.target.value as typeof source)}>

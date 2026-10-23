@@ -2,6 +2,7 @@
 import { useShop } from "../data/shop";
 import { TierBadge } from "./TierBadge";
 import { Icon } from "./Icon";
+import { ThemeToggle } from "./ThemeToggle";
 
 type CustomerPage =
   | "home"
@@ -58,13 +59,14 @@ export function CustomerLayout({
     <div className="min-h-screen flex flex-col bg-[var(--background)]">
       {/* Top bar */}
       <header className="sticky top-0 z-50 border-b border-[var(--border)] bg-[var(--background)]/95 backdrop-blur-sm">
-        <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between gap-4">
+        <div className="page-container h-14 flex items-center justify-between gap-2 sm:gap-4">
           <button
             onClick={() => onNav("home")}
-            className="flex items-center gap-2 shrink-0"
+            aria-label="KhmerShop home"
+            className="flex min-w-0 items-center gap-2"
           >
-            <Icon name="shop" className="h-6 w-6 text-[var(--gold-mid)]" />
-            <span className="font-display text-lg font-semibold text-[var(--gold-mid)] leading-none">
+            <Icon name="shop" className="h-6 w-6 shrink-0 text-[var(--gold-mid)]" />
+            <span className="hidden min-[400px]:inline truncate font-display text-lg font-semibold text-[var(--gold-mid)] leading-none">
               KhmerShop
             </span>
           </button>
@@ -87,7 +89,8 @@ export function CustomerLayout({
             ))}
           </nav>
 
-          <div className="flex items-center gap-3 shrink-0">
+          <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
+            <ThemeToggle />
             <button
               title={`Current rate: 1 USD = ${shop.exchangeRate.toLocaleString()} KHR`}
               onClick={() =>
@@ -111,7 +114,9 @@ export function CustomerLayout({
             </button>
             {!guest && <div className="flex items-center gap-2">
               <img src={CURRENT_USER.avatar} alt={CURRENT_USER.name} className="w-7 h-7 rounded-full object-cover ring-1 ring-[var(--gold-mid)]/40" />
-              <TierBadge tier={CURRENT_USER.tier} />
+              <span className="hidden sm:inline-flex">
+                <TierBadge tier={CURRENT_USER.tier} />
+              </span>
             </div>}
             <button
               onClick={guest ? onSignIn : onLogout}
@@ -145,7 +150,7 @@ export function CustomerLayout({
 
       <main
         key={page}
-        className="animate-page-enter min-w-0 flex-1 max-w-7xl w-full mx-auto px-4 py-6"
+        className="animate-page-enter page-container min-w-0 flex-1 py-6"
       >
         {children}
       </main>

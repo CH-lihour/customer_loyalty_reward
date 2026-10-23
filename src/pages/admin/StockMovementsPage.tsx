@@ -32,7 +32,7 @@ export function AdminStockMovementsPage({ actorId }: { actorId: string }) {
   const net = filtered.reduce((n, m) => n + m.onHand, 0);
 
   return (
-    <div className="mx-auto flex max-w-7xl flex-col gap-5 pb-8">
+    <div className="flex flex-col gap-5 pb-8">
       <PageHeader eyebrow="Inventory" title="Stock movements"
         description="The append-only ledger behind every stock level. Corrections are new entries, never edits."
         actions={<StockActionButtons actorId={actorId} onOpen={setDialog} />} />

@@ -44,7 +44,7 @@ export function AdminStockAlertsPage({ actorId, onNav }: { actorId: string; onNa
   };
 
   return (
-    <div className="mx-auto flex max-w-7xl flex-col gap-5 pb-8">
+    <div className="flex flex-col gap-5 pb-8">
       <PageHeader eyebrow="Inventory" title="Low-stock dashboard"
         description="Items that need reordering, batches close to expiry, and reservations about to time out." />
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
@@ -86,7 +86,7 @@ export function AdminStockAlertsPage({ actorId, onNav }: { actorId: string; onNa
         </div>
       </Panel>
 
-      <div className="grid gap-5 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <Panel title="Expiry watch" description="Batches expired or expiring within 30 days." flush>
           <div className="overflow-x-auto">
             <table className={`${tableClass} min-w-[520px]`}>

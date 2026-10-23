@@ -94,7 +94,7 @@ export function AdminRolesPage({ actorId }: { actorId: string }) {
   };
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6 pb-8">
+    <div className="space-y-6 pb-8">
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-[var(--gold-mid)]">Administration / Access control</p>
@@ -104,7 +104,7 @@ export function AdminRolesPage({ actorId }: { actorId: string }) {
         <button type="button" onClick={openCreate} className="rounded-lg bg-[var(--gold-mid)] px-4 py-2 text-sm font-semibold text-[var(--background)]">+ Create role</button>
       </header>
 
-      <section aria-label="Staff roles" className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+      <section aria-label="Staff roles" className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
         {roles.map((item) => {
           const permissions = draft[item] ?? rolePermissions[item] ?? [];
           const count = editablePages.filter((page) => permissions.includes(page)).length;
@@ -148,7 +148,7 @@ export function AdminRolesPage({ actorId }: { actorId: string }) {
           </div>}
         </div>
 
-        <div className="grid gap-5 p-5 sm:p-6 xl:grid-cols-2">
+        <div className="grid grid-cols-1 gap-5 p-5 sm:p-6 xl:grid-cols-2">
           {permissionGroups.map((group) => (
             <div key={group.title} className="rounded-xl border border-[var(--border)] bg-[var(--background)]/45 p-4">
               <div className="mb-3 flex items-start justify-between gap-3">

@@ -27,14 +27,14 @@ function ProductDetail({
 }) {
   const [imageOpen, setImageOpen, imageClosing] = useModalState<boolean>(false);
   useEffect(() => {
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
+    const previousOverflow = document.documentElement.style.overflow;
+    document.documentElement.style.overflow = "hidden";
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape" && !imageOpen) onClose();
     };
     document.addEventListener("keydown", onKeyDown);
     return () => {
-      document.body.style.overflow = previousOverflow;
+      document.documentElement.style.overflow = previousOverflow;
       document.removeEventListener("keydown", onKeyDown);
     };
   }, [onClose, imageOpen]);

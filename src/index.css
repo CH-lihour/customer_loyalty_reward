@@ -41,6 +41,68 @@
   --gold-dark: #b87c1c;
   --silver-tier: #94a3b8;
   --platinum-tier: #e2d9f3;
+
+  /* Surfaces that used to be hard-coded dark colours. */
+  --hero-gradient: linear-gradient(135deg, #272238 0%, #1c2230 50%, #111722 100%);
+  --panel-gradient: linear-gradient(135deg, #1a1e2e 0%, #1e2330 50%, #16192a 100%);
+  --hero-muted: #b5b5bc;
+  --canvas: #090b0f;
+  --field: #0b0d12;
+  --hairline: rgba(255, 255, 255, 0.1);
+  --tint: rgba(255, 255, 255, 0.05);
+  --toast-bg: #202630;
+  --toast-shadow: 0 16px 40px rgba(0, 0, 0, 0.4);
+
+  color-scheme: dark;
+}
+
+/* Light theme: set on <html> by the theme script in index.html and by ThemeProvider. */
+:root[data-theme="light"] {
+  --background: #f7f4ee;
+  --foreground: #1d1a14;
+  --card: #ffffff;
+  --card-foreground: #1d1a14;
+  --primary: #a5680f;
+  --primary-foreground: #ffffff;
+  --secondary: #f0ebe1;
+  --secondary-foreground: #4a4436;
+  --muted: #f2eee6;
+  --muted-foreground: #6e6757;
+  --accent: #c98a1e;
+  --accent-foreground: #1d1a14;
+  --border: rgba(165, 104, 15, 0.18);
+  --ring: #a5680f;
+
+  --gold-light: #8a560a;
+  --gold-mid: #a5680f;
+  --gold-dark: #d29a3a;
+  --silver-tier: #64748b;
+  --platinum-tier: #7c3aed;
+
+  --hero-gradient: linear-gradient(135deg, #fbf1dc 0%, #f7efe2 50%, #efe8dc 100%);
+  --panel-gradient: linear-gradient(135deg, #fffaf0 0%, #f8f1e4 50%, #f3ecdf 100%);
+  --hero-muted: #5e5747;
+  --canvas: #ece7dd;
+  --field: #fbfaf7;
+  --hairline: rgba(29, 26, 20, 0.12);
+  --tint: rgba(29, 26, 20, 0.04);
+  --toast-bg: #ffffff;
+  --toast-shadow: 0 12px 32px rgba(29, 26, 20, 0.14);
+
+  /* The pages use the bright -400 status shades, which are too faint on white; swap in darker shades. */
+  --color-red-400: oklch(57.7% 0.245 27.325);
+  --color-green-400: oklch(52.7% 0.154 150.069);
+  --color-orange-400: oklch(55.3% 0.195 38.402);
+  --color-cyan-400: oklch(52% 0.105 223.128);
+  --color-yellow-400: oklch(47.6% 0.114 61.907);
+  --color-blue-400: oklch(54.6% 0.245 262.881);
+  --color-purple-400: oklch(55.8% 0.288 302.321);
+  --color-purple-300: oklch(55.8% 0.288 302.321);
+  --color-amber-400: oklch(55.5% 0.163 48.998);
+  --color-amber-300: oklch(55.5% 0.163 48.998);
+  --color-pink-400: oklch(59.2% 0.249 0.584);
+
+  color-scheme: light;
 }
 
 * {
@@ -50,6 +112,36 @@
 }
 *:hover {
   scrollbar-color: rgba(232, 166, 52, 0.2) transparent;
+}
+
+/* The one content width every customer and admin page shares (also used by the customer header so they line up). */
+@utility page-container {
+  @apply mx-auto w-full max-w-7xl px-4 md:px-6;
+}
+
+/* Theme switch: a cross-fade of the whole page via View Transitions, or a colour fade where those aren't supported. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 0.4s;
+  animation-timing-function: ease;
+}
+.theme-transition,
+.theme-transition *,
+.theme-transition *::before,
+.theme-transition *::after {
+  transition:
+    background-color 0.35s ease,
+    color 0.35s ease,
+    border-color 0.35s ease,
+    fill 0.35s ease,
+    stroke 0.35s ease,
+    box-shadow 0.35s ease !important;
+}
+
+/* Always reserve the scrollbar's space so short and long pages keep the same width and the header doesn't shift. */
+html {
+  overflow-y: scroll;
+  scrollbar-gutter: stable;
 }
 
 body {
@@ -226,8 +318,8 @@ button:disabled {
   border: 1px solid rgba(232, 166, 52, 0.26);
   border-radius: 0.85rem;
   color: var(--foreground);
-  background: #202630;
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.4);
+  background: var(--toast-bg);
+  box-shadow: var(--toast-shadow);
   animation: toast-enter 0.28s cubic-bezier(0.2, 0.8, 0.2, 1) both;
   pointer-events: auto;
 }
@@ -248,7 +340,7 @@ button:disabled {
   height: 1.7rem;
   border-radius: 50%;
   font-weight: 700;
-  color: var(--background);
+  color: #0d0f14;
   background: var(--gold-mid);
 }
 .feedback-toast-success .feedback-icon {

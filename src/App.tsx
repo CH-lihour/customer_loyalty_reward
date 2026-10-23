@@ -428,8 +428,7 @@ export default function App() {
     return (
       <LoginPage
         key={route.role === "login" ? route.loginRole : "customer"}
-        initialRole={route.role === "login" ? route.loginRole : "customer"}
-        onRoleChange={(loginRole) => navigate({ role: "login", loginRole })}
+        role={route.role === "login" ? route.loginRole : "customer"}
         onBrowse={() => {
           pendingRoute.current = null;
           navigate({ role: "customer", page: "home" });

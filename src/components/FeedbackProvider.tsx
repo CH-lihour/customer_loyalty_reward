@@ -109,8 +109,8 @@ export function FeedbackProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!dialog) return;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
+    const previousOverflow = document.documentElement.style.overflow;
+    document.documentElement.style.overflow = "hidden";
     inputRef.current?.focus();
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
@@ -137,7 +137,7 @@ export function FeedbackProvider({ children }: { children: ReactNode }) {
     document.addEventListener("keydown", onKey);
     return () => {
       document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = previousOverflow;
+      document.documentElement.style.overflow = previousOverflow;
     };
   }, [dialog, finish]);
   useEffect(() => () => timers.current.forEach(clearTimeout), []);

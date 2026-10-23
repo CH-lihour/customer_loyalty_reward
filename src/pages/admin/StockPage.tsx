@@ -66,7 +66,7 @@ export function AdminStockPage({ actorId }: { actorId: string }) {
 
   const selectedReward = shop.rewards.find((r) => r.id === selected);
   return (
-    <div className="mx-auto flex max-w-7xl flex-col gap-5 pb-8">
+    <div className="flex flex-col gap-5 pb-8">
       {selectedReward ? (
         <StockItemDetail actorId={actorId} rewardId={selectedReward.id} onBack={() => setSelected(null)} onOpen={setDialog} />
       ) : (
@@ -186,7 +186,7 @@ function StockItemDetail({ actorId, rewardId, onBack, onOpen }: { actorId: strin
         <StatTile label="Stock value" value={shop.money(allTotals.onHand * item.unitCost)} icon="wallet" sub={`at ${shop.money(item.unitCost)} / unit`} />
       </div>
 
-      <div className="grid gap-5 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
         <div className="lg:col-span-2">
           <Panel title="Levels by location" description="Available excludes reserved and expired units." flush>
             <div className="overflow-x-auto">
@@ -330,7 +330,7 @@ function StockItemSettingsDialog({ actorId, item, onClose, closing }: { actorId:
   return (
     <AdminModal title="Stock rules" onClose={onClose} closing={closing} wide>
       <form onSubmit={submit} className="space-y-4">
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <label className="text-xs">SKU<input required className={`${field} font-mono-data`} value={draft.sku} onChange={(e) => change("sku", e.target.value)} /></label>
           <label className="text-xs">Unit cost (USD)<input type="number" min={0} step="0.01" className={field} value={draft.unitCost} onChange={(e) => change("unitCost", Number(e.target.value))} /></label>
           <label className="text-xs">Supplier / partner

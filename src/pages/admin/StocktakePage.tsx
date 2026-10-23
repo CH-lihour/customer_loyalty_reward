@@ -50,12 +50,12 @@ export function AdminStocktakePage({ actorId }: { actorId: string }) {
   };
 
   return (
-    <div className="mx-auto flex max-w-7xl flex-col gap-5 pb-8">
+    <div className="flex flex-col gap-5 pb-8">
       <PageHeader eyebrow="Inventory" title="Stocktake"
         description="Cycle counts by location and category. Clerks enter counts; a stock manager posts the variances to the ledger."
         actions={<button type="button" disabled={!can("clerk")} onClick={() => { setError(""); setCreating(true); }} className={primaryButton}>+ Start stocktake</button>} />
 
-      <div className="grid gap-5 lg:grid-cols-[280px_1fr]">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[280px_1fr]">
         <Panel title="Counts" flush>
           <ul className="max-h-[560px] divide-y divide-[var(--border)] overflow-auto">
             {shop.stocktakes.map((t) => {

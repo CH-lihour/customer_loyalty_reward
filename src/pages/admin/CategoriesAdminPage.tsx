@@ -47,7 +47,7 @@ export function AdminCategoriesPage({ actorId }: { actorId: string }) {
   };
 
   return (
-    <div className="mx-auto flex max-w-7xl flex-col gap-5 pb-8">
+    <div className="flex flex-col gap-5 pb-8">
       <PageHeader eyebrow="E-Commerce" title="Categories"
         description="Group products for the storefront filter. Inactive categories are hidden from customers and cannot be assigned to products." />
 

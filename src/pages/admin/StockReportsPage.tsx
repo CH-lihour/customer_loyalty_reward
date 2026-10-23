@@ -18,7 +18,7 @@ export function AdminStockReportsPage() {
   const usd = (n: number) => `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   const khr = (n: number) => `៛${Math.round(n * shop.exchangeRate).toLocaleString()}`;
   return (
-    <div className="mx-auto flex max-w-7xl flex-col gap-5 pb-8">
+    <div className="flex flex-col gap-5 pb-8">
       <PageHeader eyebrow="Inventory" title="Stock reports" description={`Values use each item's standard unit cost. KHR at ${shop.exchangeRate.toLocaleString()} per USD.`} />
       <div className="flex flex-wrap gap-1" role="tablist">
         {reports.map((r) => (
@@ -59,7 +59,7 @@ function Valuation({ usd, khr }: { usd: (n: number) => string; khr: (n: number) 
         <StatTile label="Held by reservations" value={usd(reserved)} icon="lock" sub={khr(reserved)} />
         <StatTile label="Expired, not written off" value={usd(expired)} icon="alert" tone={expired ? "orange" : "gold"} sub={khr(expired)} />
       </div>
-      <div className="grid gap-5 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
         <div className="lg:col-span-2">
           <Panel title="By item" flush>
             <div className="overflow-x-auto">
@@ -144,7 +144,7 @@ function MovementReport({ usd }: { usd: (n: number) => string }) {
         </select>
         {[7, 30, 90].map((d) => <button key={d} type="button" onClick={() => { setFrom(daysAgo(d)); setTo(todayDate()); }} className="rounded-full border border-[var(--border)] px-2.5 py-1 text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)]">Last {d} days</button>)}
       </div>
-      <div className="grid gap-5 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
         <Panel title="By movement type" flush>
           <table className="w-full text-sm">
             <thead className={theadClass}><tr><th className="p-3 text-left">Type</th><th className="p-3 text-right">Entries</th><th className="p-3 text-right">Units</th><th className="p-3 text-right">Value</th></tr></thead>

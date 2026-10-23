@@ -33,7 +33,7 @@ export function AdminProfilePage({ userId }: { userId: string }) {
   };
   const permissions = (rolePermissions[user.role] ?? []).filter((page) => page !== "profile");
 
-  return <div className="mx-auto max-w-3xl space-y-5">
+  return <div className="space-y-5">
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div><h1 className="font-display text-2xl font-semibold">My Profile</h1><p className="mt-1 text-sm text-[var(--muted-foreground)]">Your admin account and current access.</p></div>
       {editing ? <button type="button" onClick={() => setEditing(false)} className="rounded-lg border border-[var(--border)] px-4 py-2 text-sm font-semibold">Cancel</button> : <ActionIconButton action="edit" label="Edit profile" onClick={startEditing} />}

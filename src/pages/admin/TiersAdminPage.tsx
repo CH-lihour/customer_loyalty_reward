@@ -65,7 +65,7 @@ export function AdminTiersPage() {
           {message}
         </p>
       )}
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
         {tiers.map((tier) => (
           <div
             key={tier}
@@ -108,7 +108,7 @@ export function AdminTiersPage() {
           wide
         >
           <form onSubmit={save} className="space-y-5">
-            <div className="grid gap-4 md:grid-cols-3">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
               {tiers.map((tier) => (
                 <div
                   key={tier}
