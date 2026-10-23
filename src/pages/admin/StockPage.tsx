@@ -3,6 +3,7 @@ import { useShop } from "../../data/shop";
 import { useFeedback } from "../../components/FeedbackProvider";
 import { AdminModal } from "../../components/AdminModal";
 import { useModalState } from "../../components/useModalState";
+import { TablePagination, usePagedRows } from "../../components/TablePagination";
 import { StockMovementDialog, type StockFormMode, type StockFormPreset } from "../../components/StockMovementDialog";
 import {
   EmptyRow, MovementBadge, PageHeader, Panel, StatTile, StatusPill, daysUntil, field, filterControl, formatDateTime,
@@ -63,6 +64,7 @@ export function AdminStockPage({ actorId }: { actorId: string }) {
     (tracking === "all" || item.tracking === tracking),
   );
   const totalValue = filtered.reduce((sum, r) => sum + r.scoped.onHand * r.item.unitCost, 0);
+  const itemTable = usePagedRows(filtered);
 
   const selectedReward = shop.rewards.find((r) => r.id === selected);
   return (
@@ -95,7 +97,8 @@ export function AdminStockPage({ actorId }: { actorId: string }) {
               <option value="serial">Serial</option>
             </select>
           </div>
-          <div className="overflow-x-auto rounded-xl border border-[var(--border)] bg-[var(--card)]">
+          <div className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)]">
+            <div className="overflow-x-auto">
             <table className={tableClass}>
               <thead className={theadClass}>
                 <tr>
@@ -105,7 +108,7 @@ export function AdminStockPage({ actorId }: { actorId: string }) {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map(({ reward, item, scoped, status: s }) => (
+                {itemTable.rows.map(({ reward, item, scoped, status: s }) => (
                   <tr key={reward.id} onClick={() => setSelected(reward.id)} className={`${rowClass} cursor-pointer hover:bg-[var(--secondary)]/50`}>
                     <td className="p-3 font-mono-data text-xs">{item.sku}</td>
                     <td className="p-3">
@@ -135,6 +138,8 @@ export function AdminStockPage({ actorId }: { actorId: string }) {
                 </tfoot>
               )}
             </table>
+            </div>
+            <TablePagination {...itemTable.pagination} />
           </div>
         </>
       )}
@@ -171,6 +176,10 @@ function StockItemDetail({ actorId, rewardId, onBack, onOpen }: { actorId: strin
   const levelRows = shop.stockLocations.flatMap((location) => variantIds(item).map((variantId) => ({
     location, variantId, level: levels.find((l) => l.locationId === location.id && l.variantId === variantId),
   }))).filter((r) => r.level || r.location.active);
+  const batchRows = levels.flatMap((l) => l.batches.map((b) => ({ l, b })));
+  const levelTable = usePagedRows(levelRows);
+  const batchTable = usePagedRows(batchRows);
+  const historyTable = usePagedRows(shownHistory);
 
   return (
     <>
@@ -195,7 +204,7 @@ function StockItemDetail({ actorId, rewardId, onBack, onOpen }: { actorId: strin
                   <tr><th className="p-3">Location</th>{item.variants.length > 0 && <th className="p-3">Variant</th>}<th className="p-3 text-right">On hand</th><th className="p-3 text-right">Reserved</th><th className="p-3 text-right">Expired</th><th className="p-3 text-right">Available</th></tr>
                 </thead>
                 <tbody>
-                  {levelRows.map(({ location, variantId, level }) => (
+                  {levelTable.rows.map(({ location, variantId, level }) => (
                     <tr key={`${location.id}|${variantId}`} className={rowClass}>
                       <td className="p-3">{location.name}{!location.active && <span className="ml-1 text-xs text-amber-400">(inactive)</span>}</td>
                       {item.variants.length > 0 && <td className="p-3 text-xs">{variantLabel(item, variantId)}</td>}
@@ -208,6 +217,7 @@ function StockItemDetail({ actorId, rewardId, onBack, onOpen }: { actorId: strin
                 </tbody>
               </table>
             </div>
+            <TablePagination {...levelTable.pagination} />
           </Panel>
         </div>
         <Panel title="Stock rules" actions={can("manager") && <button type="button" onClick={() => setEditing(item)} className={secondaryButton}>Edit</button>}>
@@ -234,7 +244,7 @@ function StockItemDetail({ actorId, rewardId, onBack, onOpen }: { actorId: strin
             <table className={tableClass}>
               <thead className={theadClass}><tr><th className="p-3">Batch</th><th className="p-3">Location</th>{item.variants.length > 0 && <th className="p-3">Variant</th>}<th className="p-3 text-right">On hand</th><th className="p-3">Expires</th><th className="p-3" /></tr></thead>
               <tbody>
-                {levels.flatMap((l) => l.batches.map((b) => ({ l, b }))).map(({ l, b }) => {
+                {batchTable.rows.map(({ l, b }) => {
                   const days = b.expiresAt ? daysUntil(b.expiresAt) : null;
                   const expired = !!b.expiresAt && b.expiresAt < today;
                   return (
@@ -261,6 +271,7 @@ function StockItemDetail({ actorId, rewardId, onBack, onOpen }: { actorId: strin
               </tbody>
             </table>
           </div>
+          <TablePagination {...batchTable.pagination} />
         </Panel>
       )}
 
@@ -291,7 +302,7 @@ function StockItemDetail({ actorId, rewardId, onBack, onOpen }: { actorId: strin
               <tr><th className="p-3">When</th><th className="p-3">Type</th><th className="p-3">Location</th><th className="p-3">Lot / serial</th><th className="p-3 text-right">On hand Δ</th><th className="p-3 text-right">Reserved Δ</th><th className="p-3 text-right">Balance</th><th className="p-3">Reference · reason</th><th className="p-3">By</th></tr>
             </thead>
             <tbody>
-              {shownHistory.map((m) => (
+              {historyTable.rows.map((m) => (
                 <tr key={m.id} className={rowClass}>
                   <td className="whitespace-nowrap p-3 text-xs text-[var(--muted-foreground)]">{formatDateTime(m.createdAt)}</td>
                   <td className="p-3"><MovementBadge type={m.type} /></td>
@@ -308,6 +319,7 @@ function StockItemDetail({ actorId, rewardId, onBack, onOpen }: { actorId: strin
             </tbody>
           </table>
         </div>
+        <TablePagination {...historyTable.pagination} />
       </Panel>
       {editing && <StockItemSettingsDialog actorId={actorId} item={editing} onClose={() => setEditing(null)} closing={editClosing} />}
     </>

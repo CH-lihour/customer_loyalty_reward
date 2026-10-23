@@ -11,6 +11,7 @@ import { ApiError, apiLogin, apiLogout, apiProfile, type ApiProfile } from "./da
 
 import { HomePage } from "./pages/customer/HomePage";
 import { ProductsPage } from "./pages/customer/ProductsPage";
+import { ProductDetailPage } from "./pages/customer/ProductDetailPage";
 import { CartPage } from "./pages/customer/CartPage";
 import { OrdersPage } from "./pages/customer/OrdersPage";
 import { RewardsPage } from "./pages/customer/RewardsPage";
@@ -59,7 +60,7 @@ type CustomerPage =
 type Session = { role: LoginRole; userId: string; token: string };
 const sessionKey = "khmershop-demo-session";
 type Route =
-  | { role: "customer"; page: CustomerPage }
+  | { role: "customer"; page: CustomerPage; productId?: string }
   | { role: "admin"; page: AdminPage }
   | { role: "login"; loginRole: LoginRole };
 
@@ -86,15 +87,17 @@ function routePath(route: Route): string {
   const path =
     route.role === "login"
       ? route.loginRole === "admin"
-        ? "/admin/login"
+        ? "/backend/login"
         : "/login"
       : route.role === "admin"
         ? route.page === "dashboard"
-          ? "/admin"
-          : `/admin/${route.page}`
-        : route.page === "home"
-          ? "/"
-          : `/${route.page}`;
+          ? "/backend"
+          : `/backend/${route.page}`
+        : route.productId
+          ? `/products/${encodeURIComponent(route.productId)}`
+          : route.page === "home"
+            ? "/"
+            : `/${route.page}`;
   return `${basePath}${path}`;
 }
 
@@ -104,16 +107,24 @@ function readRoute(): Route {
     basePath && pathname.startsWith(`${basePath}/`)
       ? pathname.slice(basePath.length)
       : pathname;
-  const path = relative.replace(/\/+$/, "") || "/";
+  // Staff pages moved from /admin to /backend; old links still open the same page.
+  const path = (relative.replace(/\/+$/, "") || "/").replace(/^\/admin(?=\/|$)/, "/backend");
   if (path === "/login") return { role: "login", loginRole: "customer" };
-  if (path === "/admin/login") return { role: "login", loginRole: "admin" };
-  if (path === "/admin" || path === "/admin/dashboard")
+  if (path === "/backend/login") return { role: "login", loginRole: "admin" };
+  if (path === "/backend" || path === "/backend/dashboard")
     return { role: "admin", page: "dashboard" };
-  if (path.startsWith("/admin/")) {
-    const page = path.slice(7);
+  if (path.startsWith("/backend/")) {
+    const page = path.slice("/backend/".length);
     if (adminPages.includes(page as AdminPage))
       return { role: "admin", page: page as AdminPage };
   }
+  const productMatch = /^\/products\/([^/]+)$/.exec(path);
+  if (productMatch)
+    return {
+      role: "customer",
+      page: "products",
+      productId: decodeURIComponent(productMatch[1]),
+    };
   const page = path.slice(1) || "home";
   if (customerPages.includes(page as CustomerPage))
     return { role: "customer", page: page as CustomerPage };
@@ -203,6 +214,9 @@ export default function App() {
       ) {
         pendingRoute.current = route;
         navigate({ role: "login", loginRole: route.role }, true);
+      } else if (window.location.pathname !== routePath(route)) {
+        // Show the current address for the page, such as /backend/login for an old /admin/login link.
+        window.history.replaceState(null, "", routePath(route));
       }
     } else if (
       session.role === "admin" &&
@@ -278,14 +292,13 @@ export default function App() {
     );
   }, [session]);
 
-  const beginSession = (next: Session, adminRole?: AdminRole) => {
+  /** `adminPages` are the pages the API granted; the store has not applied them yet on this render. */
+  const beginSession = (next: Session, adminPages: AdminPage[] = []) => {
     verifiedToken.current = next.token;
     storeSession(next);
     const destination = pendingRoute.current;
     pendingRoute.current = null;
-    const nextAdminPages = adminRole
-      ? (shop.rolePermissions[adminRole] ?? [])
-      : [];
+    const nextAdminPages = adminPages;
     const canResume =
       !!destination &&
       destination.role === next.role &&
@@ -321,14 +334,13 @@ export default function App() {
       return message;
     };
     if (role === "admin") {
-      const existing = shop.adminUsers.find(
-        (user) => user.email.toLowerCase() === profile.email.toLowerCase(),
-      );
-      if (existing && !existing.active)
-        return reject("This staff account has been disabled.");
+      // The API refuses disabled accounts; a user without a role has no page to open.
+      const pages = (profile.pages ?? []) as AdminPage[];
+      if (!profile.role || !pages.length)
+        return reject("This staff account has no role yet. Ask a Super Admin to assign one.");
       const userId = shop.linkApiAdmin(profile);
       shop.recordLogin(null, userId);
-      beginSession({ role: "admin", userId, token }, existing?.role ?? "super_admin");
+      beginSession({ role: "admin", userId, token }, pages);
       return null;
     }
     const userId = shop.linkApiCustomer(profile);
@@ -407,8 +419,13 @@ export default function App() {
     : 0;
   const customerPage = route.role === "customer" ? route.page : "home";
   const adminPage = route.role === "admin" ? route.page : allowedAdminPages[0];
+  const productId = route.role === "customer" ? route.productId : undefined;
   const navigateCustomer = (page: CustomerPage) =>
     navigate({ role: "customer", page });
+  const viewProduct = (id: string) => {
+    navigate({ role: "customer", page: "products", productId: id });
+    window.scrollTo({ top: 0 });
+  };
   const navigateAdmin = (page: AdminPage) => {
     if (allowedAdminPages.includes(page)) navigate({ role: "admin", page });
   };
@@ -467,9 +484,11 @@ export default function App() {
       >
         {adminPage === "dashboard" && <AdminDashboardPage />}
         {adminPage === "customers" && <AdminCustomersPage />}
-        {adminPage === "products" && <AdminProductsPage />}
+        {adminPage === "products" && (
+          <AdminProductsPage actorId={adminUser.id} token={session.token} />
+        )}
         {adminPage === "categories" && (
-          <AdminCategoriesPage actorId={adminUser.id} />
+          <AdminCategoriesPage actorId={adminUser.id} token={session.token} />
         )}
         {adminPage === "orders" && <AdminOrdersPage />}
         {adminPage === "points" && <AdminPointsPage />}
@@ -497,8 +516,8 @@ export default function App() {
         )}
         {adminPage === "logs" && <AdminActivityLogsPage />}
         {adminPage === "analytics" && <AdminAnalyticsPage />}
-        {adminPage === "users" && <AdminUsersPage actorId={adminUser.id} />}
-        {adminPage === "roles" && <AdminRolesPage actorId={adminUser.id} />}
+        {adminPage === "users" && <AdminUsersPage actorId={adminUser.id} token={session.token} />}
+        {adminPage === "roles" && <AdminRolesPage actorId={adminUser.id} token={session.token} />}
         {adminPage === "exchange-rate" && (
           <AdminExchangeRatePage actorId={adminUser.id} />
         )}
@@ -520,12 +539,27 @@ export default function App() {
         <HomePage
           onNav={(page) => navigateCustomer(page as CustomerPage)}
           onAddToCart={addToCart}
+          onViewProduct={viewProduct}
           guest={!session}
           onSignIn={() => navigate({ role: "login", loginRole: "customer" })}
         />
       )}
-      {customerPage === "products" && (
-        <ProductsPage onAddToCart={addToCart} guest={!session} />
+      {customerPage === "products" && !productId && (
+        <ProductsPage
+          onAddToCart={addToCart}
+          onViewProduct={viewProduct}
+          guest={!session}
+        />
+      )}
+      {customerPage === "products" && productId && (
+        <ProductDetailPage
+          key={productId}
+          productId={productId}
+          onAddToCart={addToCart}
+          onViewProduct={viewProduct}
+          onBack={() => navigateCustomer("products")}
+          guest={!session}
+        />
       )}
       {customerPage === "cart" && (
         <CartPage

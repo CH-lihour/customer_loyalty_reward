@@ -4,6 +4,7 @@ import type { Product } from "../../data/mockData";
 import { useShop } from "../../data/shop";
 import { modalExitDelay, useModalState } from "../../components/useModalState";
 import { ImagePreviewDialog } from "../../components/ImagePreviewDialog";
+import { ProductCover, ProductGallery } from "../../components/ProductImage";
 
 interface Props {
   onAddToCart: (productId: string) => void;
@@ -25,7 +26,9 @@ function ProductDetail({
   guest: boolean;
   closing: boolean;
 }) {
-  const [imageOpen, setImageOpen, imageClosing] = useModalState<boolean>(false);
+  // The index of the image open in the full-size preview, or null when it is closed.
+  const [previewIndex, setPreviewIndex, imageClosing] = useModalState<number | null>(null);
+  const imageOpen = previewIndex !== null;
   useEffect(() => {
     const previousOverflow = document.documentElement.style.overflow;
     document.documentElement.style.overflow = "hidden";
@@ -53,19 +56,13 @@ function ProductDetail({
         aria-labelledby="product-detail-title"
         className="product-dialog"
       >
-        <div className="relative h-52 bg-[var(--secondary)] sm:h-64">
-          <button
-            type="button"
-            onClick={() => setImageOpen(true)}
-            aria-label={`Inspect image of ${product.name}`}
-            className="h-full w-full cursor-zoom-in"
-          >
-            <img
-              src={product.image}
-              alt={product.name}
-              className="h-full w-full object-cover"
-            />
-          </button>
+        <div className="relative">
+          <ProductGallery
+            images={product.images}
+            name={product.name}
+            onOpen={setPreviewIndex}
+            className={product.images.length > 1 ? "h-72 pb-1 sm:h-80" : "h-52 sm:h-64"}
+          />
           <button
             type="button"
             autoFocus
@@ -116,11 +113,12 @@ function ProductDetail({
           </button>
         </div>
       </section>
-      {imageOpen && (
+      {previewIndex !== null && (
         <ImagePreviewDialog
-          image={product.image}
+          images={product.images.map((image) => image.url)}
+          startIndex={previewIndex}
           name={product.name}
-          onClose={() => setImageOpen(false)}
+          onClose={() => setPreviewIndex(null)}
           closing={imageClosing}
         />
       )}
@@ -195,10 +193,11 @@ export function ProductsPage({ onAddToCart, guest = false }: Props) {
               onClick={() => setSelectedId(product.id)}
               className="relative block h-44 w-full overflow-hidden bg-[var(--secondary)] text-left"
             >
-              <img
-                src={product.image}
+              <ProductCover
+                images={product.images}
                 alt={product.name}
-                className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                showCount
+                className="h-full w-full transition-transform duration-500 group-hover:scale-105"
               />
               {product.bonusMultiplier > 1 && (
                 <span className="absolute right-2 top-2 rounded-full bg-[var(--gold-mid)] px-2 py-0.5 text-xs font-bold text-[var(--background)]">

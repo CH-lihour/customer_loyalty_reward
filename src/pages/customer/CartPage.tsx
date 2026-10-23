@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useShop } from "../../data/shop";
 import { useFeedback } from "../../components/FeedbackProvider";
+import { ProductCover } from "../../components/ProductImage";
 import { Icon } from "../../components/Icon";
 
 export function CartPage({
@@ -90,10 +91,10 @@ export function CartPage({
           key={productId}
           className="flex flex-wrap items-center gap-4 rounded-xl border border-[var(--border)] bg-[var(--card)] p-4"
         >
-          <img
-            src={product!.image}
+          <ProductCover
+            images={product!.images}
             alt={product!.name}
-            className="h-16 w-16 rounded-lg object-cover"
+            className="h-16 w-16 shrink-0 rounded-lg"
           />
           <div className="flex-1 min-w-32">
             <div className="font-semibold">{product!.name}</div>

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { TablePagination, usePagedRows } from "../../components/TablePagination";
 import { useShop } from "../../data/shop";
 import { EmptyRow, MovementBadge, PageHeader, Panel, StatTile, filterControl, rowClass, tableClass, theadClass } from "../../components/StockUi";
 import { movementLabels, todayDate, totalsFor, type StockMovementType } from "../../data/stock";
@@ -51,6 +52,7 @@ function Valuation({ usd, khr }: { usd: (n: number) => string; khr: (n: number) 
     value: shop.stockLevels.filter((l) => l.locationId === location.id).reduce((n, l) => n + l.onHand * shop.stockItemFor(l.rewardId).unitCost, 0),
     units: totalsFor(shop.stockLevels, { locationId: location.id }).onHand,
   }));
+  const itemTable = usePagedRows(rows);
   return (
     <>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
@@ -66,7 +68,7 @@ function Valuation({ usd, khr }: { usd: (n: number) => string; khr: (n: number) 
               <table className={tableClass}>
                 <thead className={theadClass}><tr><th className="p-3">Item</th><th className="p-3 text-right">On hand</th><th className="p-3 text-right">Unit cost</th><th className="p-3 text-right">Value USD</th><th className="p-3 text-right">Value KHR</th><th className="p-3 text-right">Share</th></tr></thead>
                 <tbody>
-                  {rows.map(({ reward, item, totals, value }) => (
+                  {itemTable.rows.map(({ reward, item, totals, value }) => (
                     <tr key={reward.id} className={rowClass}>
                       <td className="p-3">{reward.name}<div className="font-mono-data text-xs text-[var(--muted-foreground)]">{item.sku}</div></td>
                       <td className="p-3 text-right font-mono-data">{totals.onHand}</td>
@@ -80,6 +82,7 @@ function Valuation({ usd, khr }: { usd: (n: number) => string; khr: (n: number) 
                 <tfoot><tr className="border-t border-[var(--border)] font-semibold"><td className="p-3" colSpan={3}>Total</td><td className="p-3 text-right font-mono-data text-[var(--gold-mid)]">{usd(total)}</td><td className="p-3 text-right font-mono-data text-xs text-[var(--gold-mid)]">{khr(total)}</td><td /></tr></tfoot>
               </table>
             </div>
+            <TablePagination {...itemTable.pagination} />
           </Panel>
         </div>
         <Panel title="By location">
@@ -132,6 +135,8 @@ function MovementReport({ usd }: { usd: (n: number) => string }) {
     const list = rows.filter((m) => m.rewardId === reward.id);
     return { reward, cells: columns.map((c) => list.filter((m) => c.types.includes(m.type)).reduce((n, m) => n + m.onHand, 0)), net: list.reduce((n, m) => n + m.onHand, 0) };
   }).filter((r) => r.cells.some(Boolean));
+  const typeTable = usePagedRows(byType);
+  const itemTable = usePagedRows(byItem);
   const cell = (n: number) => <span className={n > 0 ? "text-green-400" : n < 0 ? "text-red-400" : "text-[var(--muted-foreground)]"}>{n > 0 ? `+${n}` : n || "—"}</span>;
   return (
     <>
@@ -149,7 +154,7 @@ function MovementReport({ usd }: { usd: (n: number) => string }) {
           <table className="w-full text-sm">
             <thead className={theadClass}><tr><th className="p-3 text-left">Type</th><th className="p-3 text-right">Entries</th><th className="p-3 text-right">Units</th><th className="p-3 text-right">Value</th></tr></thead>
             <tbody>
-              {byType.map((t) => (
+              {typeTable.rows.map((t) => (
                 <tr key={t.type} className={rowClass}>
                   <td className="p-3"><MovementBadge type={t.type} /></td>
                   <td className="p-3 text-right font-mono-data">{t.count}</td>
@@ -160,6 +165,7 @@ function MovementReport({ usd }: { usd: (n: number) => string }) {
               {!byType.length && <EmptyRow colSpan={4}>No movements in this range.</EmptyRow>}
             </tbody>
           </table>
+          <TablePagination {...typeTable.pagination} />
         </Panel>
         <div className="lg:col-span-2">
           <Panel title="By item" description="Net on-hand change per movement group." flush>
@@ -167,7 +173,7 @@ function MovementReport({ usd }: { usd: (n: number) => string }) {
               <table className={tableClass}>
                 <thead className={theadClass}><tr><th className="p-3">Item</th>{columns.map((c) => <th key={c.label} className="p-3 text-right">{c.label}</th>)}<th className="p-3 text-right">Net</th></tr></thead>
                 <tbody>
-                  {byItem.map(({ reward, cells, net }) => (
+                  {itemTable.rows.map(({ reward, cells, net }) => (
                     <tr key={reward.id} className={rowClass}>
                       <td className="p-3">{reward.name}</td>
                       {cells.map((n, i) => <td key={i} className="p-3 text-right font-mono-data">{cell(n)}</td>)}
@@ -178,6 +184,7 @@ function MovementReport({ usd }: { usd: (n: number) => string }) {
                 </tbody>
               </table>
             </div>
+            <TablePagination {...itemTable.pagination} />
           </Panel>
         </div>
       </div>
@@ -206,6 +213,7 @@ function Velocity() {
         : r.cover > 180 ? { text: "Slow", tone: "text-orange-400 bg-orange-400/10" }
           : { text: "Steady", tone: "text-[var(--gold-mid)] bg-[var(--gold-mid)]/10" };
   const max = Math.max(1, ...rows.map((r) => r.issued));
+  const rankTable = usePagedRows(rows);
   return (
     <>
       <div className="flex gap-2">
@@ -218,7 +226,7 @@ function Velocity() {
           <table className={tableClass}>
             <thead className={theadClass}><tr><th className="p-3">Item</th><th className="p-3">Issued</th><th className="p-3 text-right">Per week</th><th className="p-3 text-right">Available</th><th className="p-3 text-right">Days of cover</th><th className="p-3">Class</th></tr></thead>
             <tbody>
-              {rows.map((r) => {
+              {rankTable.rows.map((r) => {
                 const tag = label(r);
                 return (
                   <tr key={r.reward.id} className={rowClass}>
@@ -239,6 +247,7 @@ function Velocity() {
             </tbody>
           </table>
         </div>
+        <TablePagination {...rankTable.pagination} />
       </Panel>
     </>
   );
@@ -267,6 +276,7 @@ function Reconciliation() {
   });
   const issues = rows.filter((r) => !r.ok).length;
   const legacy = shop.redemptions.filter((r) => r.legacy).length;
+  const reconcileTable = usePagedRows(rows);
   const pair = (a: number, b: number) => (
     <span className={a === b ? "" : "font-semibold text-red-400"}>{a} / {b}</span>
   );
@@ -283,7 +293,7 @@ function Reconciliation() {
           <table className={tableClass}>
             <thead className={theadClass}><tr><th className="p-3">Item</th><th className="p-3 text-right">Reserved</th><th className="p-3 text-right">Fulfilled</th><th className="p-3 text-right">Returned</th><th className="p-3 text-right">Backordered</th><th className="p-3 text-right">POS issues</th><th className="p-3">Result</th></tr></thead>
             <tbody>
-              {rows.map(({ reward, expected, ledger, backordered, pos, ok }) => (
+              {reconcileTable.rows.map(({ reward, expected, ledger, backordered, pos, ok }) => (
                 <tr key={reward.id} className={rowClass}>
                   <td className="p-3">{reward.name}</td>
                   <td className="p-3 text-right font-mono-data">{pair(expected.reserved, ledger.reserved)}</td>
@@ -297,6 +307,7 @@ function Reconciliation() {
             </tbody>
           </table>
         </div>
+        <TablePagination {...reconcileTable.pagination} />
       </Panel>
     </>
   );

@@ -30,7 +30,7 @@ There is no test runner or linter configured.
 - Prices are stored in USD. Display them with `shop.money(usd)`, which formats as USD or KHR using `exchangeRate`.
 
 **Routing: hand-rolled in `src/App.tsx`, with no router library.** It uses the History API with paths under `import.meta.env.BASE_URL`:
-- Customer pages are at `/` and `/<page>`. Admin pages are at `/admin` and `/admin/<page>`. Login pages are `/login` and `/admin/login`.
+- Customer pages are at `/` and `/<page>`. Admin pages are at `/backend` and `/backend/<page>`. Login pages are `/login` and `/backend/login`. Old `/admin/...` links still open the matching page and the address is rewritten to `/backend/...`.
 - The session (`{role, userId}`) is kept in `sessionStorage` under `khmershop-demo-session`. Guests can only see `home`, `products`, and `cart`; any other page redirects to login and returns afterwards.
 - Admin page access is `shop.rolePermissions[adminUser.role]`. Adding an admin page means updating the `AdminPage` union and `adminPageLabels` in `src/data/adminAccess.ts`, adding the role defaults there, adding the import and render case in `App.tsx`, and adding the nav entry in `AdminLayout`. Adding a customer page means updating the `CustomerPage` union and `customerPages` list in `App.tsx`, plus the page union and nav list in `CustomerLayout`, whose nav items carry an English `label` and a Khmer `labelKh`.
 

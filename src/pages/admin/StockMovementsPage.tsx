@@ -1,12 +1,11 @@
 import { useState } from "react";
 import { useShop } from "../../data/shop";
 import { useModalState } from "../../components/useModalState";
+import { TablePagination, usePagedRows } from "../../components/TablePagination";
 import { StockMovementDialog, type StockFormMode, type StockFormPreset } from "../../components/StockMovementDialog";
 import { EmptyRow, MovementBadge, PageHeader, filterControl, formatDateTime, rowClass, tableClass, theadClass } from "../../components/StockUi";
 import { StockActionButtons } from "./StockPage";
 import { movementLabels, variantLabel, type StockMovementType } from "../../data/stock";
-
-const PAGE = 100;
 
 export function AdminStockMovementsPage({ actorId }: { actorId: string }) {
   const shop = useShop();
@@ -17,7 +16,6 @@ export function AdminStockMovementsPage({ actorId }: { actorId: string }) {
   const [locationId, setLocationId] = useState("all");
   const [rewardId, setRewardId] = useState("all");
   const [actor, setActor] = useState("all");
-  const [limit, setLimit] = useState(PAGE);
   const locName = (id: string) => shop.stockLocations.find((l) => l.id === id)?.name ?? id;
   const actors = [...new Set(shop.stockMovements.map((m) => m.actorName))].sort();
 
@@ -30,6 +28,7 @@ export function AdminStockMovementsPage({ actorId }: { actorId: string }) {
       (actor === "all" || m.actorName === actor);
   });
   const net = filtered.reduce((n, m) => n + m.onHand, 0);
+  const table = usePagedRows(filtered);
 
   return (
     <div className="flex flex-col gap-5 pb-8">
@@ -59,13 +58,14 @@ export function AdminStockMovementsPage({ actorId }: { actorId: string }) {
       <p className="text-xs text-[var(--muted-foreground)]">
         {filtered.length} entries · net on-hand change <span className={net >= 0 ? "text-green-400" : "text-red-400"}>{net > 0 ? "+" : ""}{net}</span>
       </p>
-      <div className="overflow-x-auto rounded-xl border border-[var(--border)] bg-[var(--card)]">
+      <div className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)]">
+        <div className="overflow-x-auto">
         <table className={`${tableClass} min-w-[1000px]`}>
           <thead className={theadClass}>
             <tr><th className="p-3">When</th><th className="p-3">Type</th><th className="p-3">Item</th><th className="p-3">Location</th><th className="p-3">Lot / serial</th><th className="p-3 text-right">On hand Δ</th><th className="p-3 text-right">Reserved Δ</th><th className="p-3">Reference · reason</th><th className="p-3">By</th></tr>
           </thead>
           <tbody>
-            {filtered.slice(0, limit).map((m) => {
+            {table.rows.map((m) => {
               const reward = shop.rewards.find((r) => r.id === m.rewardId);
               const item = shop.stockItemFor(m.rewardId);
               return (
@@ -85,12 +85,9 @@ export function AdminStockMovementsPage({ actorId }: { actorId: string }) {
             {!filtered.length && <EmptyRow colSpan={9}>No movements match these filters.</EmptyRow>}
           </tbody>
         </table>
+        </div>
+        <TablePagination {...table.pagination} />
       </div>
-      {filtered.length > limit && (
-        <button type="button" onClick={() => setLimit((n) => n + PAGE)} className="self-center rounded-lg border border-[var(--border)] px-4 py-2 text-sm hover:bg-[var(--secondary)]">
-          Show {Math.min(PAGE, filtered.length - limit)} more
-        </button>
-      )}
       {dialog && <StockMovementDialog actorId={actorId} mode={dialog.mode} preset={dialog.preset} onClose={() => setDialog(null)} closing={dialogClosing} />}
     </div>
   );

@@ -30,7 +30,7 @@ import {
   type Tier,
 } from "./mockData";
 import { extraCustomers, extraProducts } from "./seedExtras";
-import type { ApiProfile } from "./api";
+import type { ApiProfile, ApiRole } from "./api";
 import {
   adminPages,
   defaultAdminRoleLabels,
@@ -274,6 +274,15 @@ function restoreCategories(parsed: Partial<State>): ProductCategory[] {
   }
   return categories;
 }
+/** Saves from before multi-image products kept one `image` URL; turn it into the cover image. */
+function restoreProducts(parsed: Partial<State>): Product[] {
+  if (!Array.isArray(parsed.products)) return initial.products;
+  return parsed.products.map((product) => {
+    if (Array.isArray(product.images)) return product;
+    const legacy = (product as Product & { image?: string }).image;
+    return { ...product, images: legacy ? [{ url: legacy }] : [] };
+  });
+}
 function restoreState(saved: string | null): State {
   if (!saved) return initial;
   try {
@@ -302,6 +311,7 @@ function restoreState(saved: string | null): State {
         ? [...parsed.adminUsers, ...initial.adminUsers.filter((seed) => !parsed.adminUsers!.some((user) => user.id === seed.id || user.email.toLowerCase() === seed.email))]
         : initial.adminUsers,
       disabledCustomerIds: parsed.disabledCustomerIds ?? [],
+      products: restoreProducts(parsed),
       categories: restoreCategories(parsed),
       roleLabels,
       rolePermissions,
@@ -403,6 +413,16 @@ const staffLog = (s: State, actor: { id: string; name: string }, event: string, 
   ...s.logs,
 ];
 const systemActor = { id: "system", name: "System" };
+/** Keeps the API's page ids the frontend knows, in menu order. */
+const toAdminPages = (pages: string[]): AdminPage[] => adminPages.filter((page) => pages.includes(page));
+/** Staff accounts from the API use stable ids so sessions survive a reload of the staff list. */
+export const toAdminUser = (profile: ApiProfile): AdminUser => ({
+  id: `api-admin-${profile.id}`,
+  name: profile.name,
+  email: profile.email.trim().toLowerCase(),
+  role: profile.role?.code ?? "",
+  active: profile.is_active ?? true,
+});
 const authorityFor = (s: State, role: AdminRole): StockAuthority =>
   role === "super_admin" ? "admin" : (s.stockAuthority[role] ?? "clerk");
 /** Returns the acting staff user, or an error when they lack the stock authority level. */
@@ -413,14 +433,6 @@ const stockActor = (s: State, actorId: string, need: StockAuthority): AdminUser 
     return "Your role has no inventory access.";
   if (stockAuthorityRank[authorityFor(s, actor.role)] < stockAuthorityRank[need])
     return `This action needs ${stockAuthorityLabels[need].toLowerCase()} authority.`;
-  return actor;
-};
-/** Returns the acting staff user, or an error when their role cannot manage product categories. */
-const categoryActor = (s: State, actorId: string): AdminUser | string => {
-  const actor = s.adminUsers.find((user) => user.id === actorId && user.active);
-  if (!actor) return "Staff account not found.";
-  if (actor.role !== "super_admin" && !(s.rolePermissions[actor.role] ?? []).includes("categories"))
-    return "Your role cannot manage categories.";
   return actor;
 };
 const stockItemOf = (s: State, rewardId: string) => s.stockItems[rewardId] ?? defaultStockItem({ id: rewardId });
@@ -635,11 +647,9 @@ const expireReservations = (s: State): State => {
 };
 
 type Shop = State & {
-  saveAdminUser: (actorId: string, user: Omit<AdminUser, "id"> & { id?: string }) => string | null;
-  setAdminUserActive: (actorId: string, userId: string, active: boolean) => string | null;
   setCustomerActive: (actorId: string, userId: string, active: boolean) => string | null;
-  saveRolePermissions: (actorId: string, role: AdminRole, pages: AdminPage[]) => string | null;
-  createAdminRole: (actorId: string, name: string) => { roleId?: AdminRole; error?: string };
+  /** Replaces staff users, role labels, role pages, and stock authority with those loaded from the API. */
+  syncStaff: (roles: ApiRole[], users: ApiProfile[]) => void;
   updateAdminProfile: (userId: string, fields: Pick<AdminUser, "name" | "email">) => string | null;
   currentUser: Customer;
   /** Products customers can browse: those whose category is active. */
@@ -657,11 +667,13 @@ type Shop = State & {
     amount: number,
     reason: string,
   ) => string | null;
-  saveProduct: (product: Product) => void;
-  deleteProduct: (id: string) => void;
-  /** Creates or updates a category. Renaming it also renames the category on its products. */
-  saveCategory: (actorId: string, category: ProductCategory) => string | null;
-  deleteCategory: (actorId: string, id: string) => string | null;
+  /**
+   * Replaces the catalog with the one loaded from the API. `stock` overrides counts by product id;
+   * other products keep the count the store already has. Cart lines for removed products are dropped.
+   */
+  syncCatalog: (categories: ProductCategory[], products: Product[], stock?: Record<string, number>) => void;
+  /** Adds a staff activity-log entry for a change made through the API. */
+  logStaffAction: (actorId: string, event: string, description: string) => void;
   saveReward: (reward: Reward) => void;
   deleteReward: (id: string) => string | null;
   saveTier: (tier: Tier, rule: TierRule) => void;
@@ -688,7 +700,7 @@ type Shop = State & {
   recordLogin: (userId: string | null, adminUserId?: string) => void;
   /** Returns the demo customer for an API account, creating one by email if needed. */
   linkApiCustomer: (profile: ApiProfile) => string;
-  /** Returns the demo staff user for an API account; new ones get Super Admin until the API sends roles. */
+  /** Adds or updates the staff user for an API account, with the role and pages the API sent. Returns its id. */
   linkApiAdmin: (profile: ApiProfile) => string;
   stockLevels: StockLevel[];
   /** Redeemable units across active locations. */
@@ -707,7 +719,6 @@ type Shop = State & {
   saveStockLocation: (actorId: string, location: StockLocation) => string | null;
   saveSupplier: (actorId: string, supplier: Supplier) => string | null;
   saveStockSettings: (actorId: string, settings: StockSettings) => string | null;
-  saveStockAuthority: (actorId: string, role: AdminRole, level: "clerk" | "manager") => string | null;
   createStocktake: (actorId: string, locationId: string, category: string, note: string) => { id?: string; error?: string };
   recordCount: (actorId: string, stocktakeId: string, line: number, counted: number | null) => string | null;
   postStocktake: (actorId: string, id: string) => string | null;
@@ -814,39 +825,18 @@ export function ShopProvider({ children }: { children: ReactNode }) {
         }));
         return null;
       },
-      saveAdminUser: (actorId, user) => {
-        const actor = state.adminUsers.find((item) => item.id === actorId && item.active);
-        if (actor?.role !== "super_admin") return "Only Super Admin can manage users.";
-        const name = user.name.trim();
-        const email = user.email.trim().toLowerCase();
-        if (!name || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
-          return "Enter a name and valid email address.";
-        if (!Object.prototype.hasOwnProperty.call(state.roleLabels, user.role) || !state.rolePermissions[user.role])
-          return "Choose a valid staff role.";
-        if (state.adminUsers.some((item) => item.email.toLowerCase() === email && item.id !== user.id))
-          return "An admin user already has that email address.";
-        const existing = state.adminUsers.find((item) => item.id === user.id);
-        if (existing?.id === "admin-super" && (user.role !== "super_admin" || !user.active))
-          return "The primary Super Admin must stay active.";
-        const saved: AdminUser = { id: user.id || uid(), name, email, role: user.role, active: user.active };
-        setState((s) => ({
-          ...s,
-          adminUsers: existing
-            ? s.adminUsers.map((item) => item.id === saved.id ? saved : item)
-            : [...s.adminUsers, saved],
-          logs: [{ id: uid(), userId: actor.id, userName: actor.name, event: existing ? "ADMIN_USER_UPDATED" : "ADMIN_USER_CREATED", description: `${existing ? "Updated" : "Created"} staff user ${saved.email} (${saved.role})`, timestamp: now().replace("T", " ").slice(0, 16) }, ...s.logs],
-        }));
-        return null;
-      },
-      setAdminUserActive: (actorId, userId, active) => {
-        const actor = state.adminUsers.find((item) => item.id === actorId && item.active);
-        if (actor?.role !== "super_admin") return "Only Super Admin can manage users.";
-        if (userId === "admin-super" && !active) return "The primary Super Admin must stay active.";
-        if (userId === actorId && !active) return "You cannot disable your own account.";
-        if (!state.adminUsers.some((item) => item.id === userId)) return "User not found.";
-        setState((s) => ({ ...s, adminUsers: s.adminUsers.map((item) => item.id === userId ? { ...item, active } : item), logs: [{ id: uid(), userId: actor.id, userName: actor.name, event: "ADMIN_USER_STATUS", description: `${active ? "Enabled" : "Disabled"} staff user ${userId}`, timestamp: now().replace("T", " ").slice(0, 16) }, ...s.logs] }));
-        return null;
-      },
+      syncStaff: (roles, users) =>
+        setState((s) => {
+          const roleLabels: Record<AdminRole, string> = {};
+          const rolePermissions: Record<AdminRole, AdminPage[]> = {};
+          const stockAuthority: Record<AdminRole, "clerk" | "manager"> = {};
+          for (const role of roles) {
+            roleLabels[role.code] = role.label;
+            rolePermissions[role.code] = toAdminPages(role.pages);
+            if (role.stock_authority) stockAuthority[role.code] = role.stock_authority;
+          }
+          return { ...s, roleLabels, rolePermissions, stockAuthority, adminUsers: users.map(toAdminUser) };
+        }),
       setCustomerActive: (actorId, userId, active) => {
         const actor = state.adminUsers.find((item) => item.id === actorId && item.active);
         if (actor?.role !== "super_admin") return "Only Super Admin can manage users.";
@@ -860,34 +850,6 @@ export function ShopProvider({ children }: { children: ReactNode }) {
           logs: [{ id: uid(), userId: actor.id, userName: actor.name, event: "CUSTOMER_STATUS", description: `${active ? "Enabled" : "Disabled"} customer ${customer.email}`, timestamp: now().replace("T", " ").slice(0, 16) }, ...s.logs],
         }));
         return null;
-      },
-      saveRolePermissions: (actorId, role, pages) => {
-        const actor = state.adminUsers.find((item) => item.id === actorId && item.active);
-        if (actor?.role !== "super_admin") return "Only Super Admin can change permissions.";
-        if (role === "super_admin") return "Super Admin always has full access.";
-        if (!Object.prototype.hasOwnProperty.call(state.roleLabels, role)) return "Role not found.";
-        const allowed = adminPages.filter((page) => page !== "users" && page !== "roles" && page !== "profile" && page !== "exchange-rate" && pages.includes(page));
-        if (!allowed.length) return "Select at least one section for this role.";
-        allowed.push("profile");
-        setState((s) => ({ ...s, rolePermissions: { ...s.rolePermissions, [role]: allowed }, logs: [{ id: uid(), userId: actor.id, userName: actor.name, event: "ROLE_PERMISSIONS_UPDATED", description: `Updated ${role} permissions: ${allowed.join(", ")}`, timestamp: now().replace("T", " ").slice(0, 16) }, ...s.logs] }));
-        return null;
-      },
-      createAdminRole: (actorId, name) => {
-        const actor = state.adminUsers.find((item) => item.id === actorId && item.active);
-        if (actor?.role !== "super_admin") return { error: "Only Super Admin can create roles." };
-        const label = name.trim().replace(/\s+/g, " ");
-        if (label.length < 2 || label.length > 50)
-          return { error: "Enter a role name between 2 and 50 characters." };
-        if (Object.values(state.roleLabels).some((item) => item.toLowerCase() === label.toLowerCase()))
-          return { error: "A role with that name already exists." };
-        const roleId = `role-${uid()}`;
-        setState((s) => ({
-          ...s,
-          roleLabels: { ...s.roleLabels, [roleId]: label },
-          rolePermissions: { ...s.rolePermissions, [roleId]: ["dashboard", "profile"] },
-          logs: [{ id: uid(), userId: actor.id, userName: actor.name, event: "ROLE_CREATED", description: `Created staff role ${label}`, timestamp: now().replace("T", " ").slice(0, 16) }, ...s.logs],
-        }));
-        return { roleId };
       },
       setCurrency: (currency) => setState((s) => ({ ...s, currency })),
       saveExchangeRate: (actorId, rate) => {
@@ -1460,19 +1422,6 @@ export function ShopProvider({ children }: { children: ReactNode }) {
             logs: staffLog(s, actor, "STOCK_SETTINGS_UPDATED", `Reservation timeout set to ${settings.reservationHours}h`),
           };
         }),
-      saveStockAuthority: (actorId, role, level) =>
-        commit((s) => {
-          const actor = s.adminUsers.find((user) => user.id === actorId && user.active);
-          if (actor?.role !== "super_admin") return "Only Super Admin can change stock authority.";
-          if (role === "super_admin") return "Super Admin always has stock admin authority.";
-          if (!Object.prototype.hasOwnProperty.call(s.roleLabels, role)) return "Role not found.";
-          if (level !== "clerk" && level !== "manager") return "Choose clerk or manager.";
-          return {
-            ...s,
-            stockAuthority: { ...s.stockAuthority, [role]: level },
-            logs: staffLog(s, actor, "STOCK_AUTHORITY_UPDATED", `${s.roleLabels[role]} stock authority set to ${level}`),
-          };
-        }),
       createStocktake: (actorId, locationId, category, note) => {
         let id = "";
         const error = commit((s) => {
@@ -1609,66 +1558,22 @@ export function ShopProvider({ children }: { children: ReactNode }) {
         }));
         return null;
       },
-      saveProduct: (product) =>
-        setState((s) => ({
-          ...s,
-          products: s.products.some((p) => p.id === product.id)
-            ? s.products.map((p) => (p.id === product.id ? product : p))
-            : [product, ...s.products],
-        })),
-      deleteProduct: (id) =>
-        setState((s) => ({
-          ...s,
-          products: s.products.filter((p) => p.id !== id),
-          cart: s.cart.filter((c) => c.productId !== id),
-        })),
-      saveCategory: (actorId, category) =>
-        commit((s) => {
-          const actor = categoryActor(s, actorId);
-          if (typeof actor === "string") return actor;
-          const name = category.name.trim();
-          if (!name) return "Enter a category name.";
-          if (name.length > 40) return "Keep the category name to 40 characters or fewer.";
-          if (s.categories.some((c) => c.id !== category.id && c.name.toLowerCase() === name.toLowerCase()))
-            return `A category named ${name} already exists.`;
-          const existing = s.categories.find((c) => c.id === category.id);
-          const saved: ProductCategory = {
-            ...category,
-            id: category.id || `cat-${uid().slice(0, 8)}`,
-            name,
-            nameKh: category.nameKh.trim(),
-            description: category.description.trim(),
-          };
-          const renamed = existing && existing.name !== name;
-          const change = !existing
-            ? `Created category ${name}`
-            : renamed
-              ? `Renamed category ${existing.name} to ${name}`
-              : existing.active !== saved.active
-                ? `${saved.active ? "Activated" : "Deactivated"} category ${name}`
-                : `Updated category ${name}`;
-          return {
-            ...s,
-            categories: existing ? s.categories.map((c) => (c.id === saved.id ? saved : c)) : [...s.categories, saved],
-            products: renamed
-              ? s.products.map((p) => (p.category === existing.name ? { ...p, category: name } : p))
-              : s.products,
-            logs: staffLog(s, actor, existing ? "CATEGORY_UPDATED" : "CATEGORY_CREATED", change),
-          };
+      syncCatalog: (categories, products, stock = {}) =>
+        setState((s) => {
+          // Stock is not in the API: keep the store's count, matching by id, then by name for seeded products.
+          const byId = new Map(s.products.map((p) => [p.id, p.stock]));
+          const byName = new Map(s.products.map((p) => [p.name.toLowerCase(), p.stock]));
+          const next = products.map((p) => ({
+            ...p,
+            stock: stock[p.id] ?? byId.get(p.id) ?? byName.get(p.name.toLowerCase()) ?? 0,
+          }));
+          const ids = new Set(next.map((p) => p.id));
+          return { ...s, categories, products: next, cart: s.cart.filter((c) => ids.has(c.productId)) };
         }),
-      deleteCategory: (actorId, id) =>
-        commit((s) => {
-          const actor = categoryActor(s, actorId);
-          if (typeof actor === "string") return actor;
-          const category = s.categories.find((c) => c.id === id);
-          if (!category) return "Category not found.";
-          const used = s.products.filter((p) => p.category === category.name).length;
-          if (used) return `Move the ${used} product${used === 1 ? "" : "s"} in ${category.name} to another category first.`;
-          return {
-            ...s,
-            categories: s.categories.filter((c) => c.id !== id),
-            logs: staffLog(s, actor, "CATEGORY_DELETED", `Deleted category ${category.name}`),
-          };
+      logStaffAction: (actorId, event, description) =>
+        setState((s) => {
+          const actor = s.adminUsers.find((user) => user.id === actorId);
+          return actor ? { ...s, logs: staffLog(s, actor, event, description) } : s;
         }),
       saveReward: (reward) =>
         setState((s) => ({
@@ -1899,19 +1804,19 @@ export function ShopProvider({ children }: { children: ReactNode }) {
         return id;
       },
       linkApiAdmin: (profile) => {
-        const email = profile.email.trim().toLowerCase();
-        const existing = state.adminUsers.find((u) => u.email.toLowerCase() === email);
-        if (existing) return existing.id;
-        const id = `api-admin-${profile.id}`;
-        setState((s) => {
-          if (s.adminUsers.some((u) => u.id === id || u.email.toLowerCase() === email)) return s;
-          return {
-            ...s,
-            adminUsers: [...s.adminUsers, { id, name: profile.name, email, role: "super_admin", active: true }],
-            logs: [{ id: uid(), userId: id, userName: profile.name, event: "API_ACCOUNT_LINKED", description: `Staff user ${email} linked from the API`, timestamp: stamp() }, ...s.logs],
-          };
-        });
-        return id;
+        const user = toAdminUser(profile);
+        const role = profile.role;
+        setState((s) => ({
+          ...s,
+          // Replace any earlier copy of this account, including a demo user with the same email.
+          adminUsers: [...s.adminUsers.filter((u) => u.id !== user.id && u.email.toLowerCase() !== user.email), user],
+          ...(role && {
+            roleLabels: { ...s.roleLabels, [role.code]: role.label },
+            rolePermissions: { ...s.rolePermissions, [role.code]: toAdminPages(profile.pages ?? []) },
+            stockAuthority: role.stock_authority ? { ...s.stockAuthority, [role.code]: role.stock_authority } : s.stockAuthority,
+          }),
+        }));
+        return user.id;
       },
     }),
     [state, currentUser, storefrontProducts, stockLevels, commit, setState],

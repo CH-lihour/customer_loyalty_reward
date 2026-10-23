@@ -25,6 +25,12 @@ export interface Customer {
   ordersCount: number;
 }
 
+/** A product photo. `id` is the API's image id, present for images loaded from the API. */
+export interface ProductImage {
+  id?: number;
+  url: string;
+}
+
 export interface Product {
   id: string;
   name: string;
@@ -32,7 +38,8 @@ export interface Product {
   category: string;
   price: number;
   stock: number;
-  image: string;
+  /** The first image is the cover. */
+  images: ProductImage[];
   description: string;
   normalPoints: number;
   bonusMultiplier: number;
@@ -274,8 +281,7 @@ export const products: Product[] = [
     category: "Coffee & Tea",
     price: 12,
     stock: 45,
-    image:
-      "https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=400&h=300&fit=crop&auto=format",
+    images: [{ url: "https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=400&h=300&fit=crop&auto=format" }],
     description:
       "Premium Cambodian coffee blended with authentic Kampot pepper. Bold, aromatic, and uniquely local.",
     normalPoints: 12,
@@ -289,8 +295,7 @@ export const products: Product[] = [
     category: "Snacks",
     price: 18,
     stock: 30,
-    image:
-      "https://images.unsplash.com/photo-1621939514649-280e2ee25f60?w=400&h=300&fit=crop&auto=format",
+    images: [{ url: "https://images.unsplash.com/photo-1621939514649-280e2ee25f60?w=400&h=300&fit=crop&auto=format" }],
     description:
       "A curated box of traditional Cambodian snacks — dried mango, banana chips, coconut candy, and more.",
     normalPoints: 18,
@@ -304,8 +309,7 @@ export const products: Product[] = [
     category: "Clothing",
     price: 35,
     stock: 20,
-    image:
-      "https://images.unsplash.com/photo-1606760227091-3dd870d97f1d?w=400&h=300&fit=crop&auto=format",
+    images: [{ url: "https://images.unsplash.com/photo-1606760227091-3dd870d97f1d?w=400&h=300&fit=crop&auto=format" }],
     description:
       "Traditional Cambodian krama woven from pure silk. Versatile — wear it as a scarf, headband, or sarong.",
     normalPoints: 35,
@@ -319,8 +323,7 @@ export const products: Product[] = [
     category: "Food & Grocery",
     price: 8,
     stock: 100,
-    image:
-      "https://images.unsplash.com/photo-1586201375761-83865001e31c?w=400&h=300&fit=crop&auto=format",
+    images: [{ url: "https://images.unsplash.com/photo-1586201375761-83865001e31c?w=400&h=300&fit=crop&auto=format" }],
     description:
       "Phka Malis jasmine rice — Cambodia's award-winning fragrant white rice. Grown in Takeo province.",
     normalPoints: 8,
@@ -334,8 +337,7 @@ export const products: Product[] = [
     category: "Beauty",
     price: 14,
     stock: 60,
-    image:
-      "https://images.unsplash.com/photo-1556228578-0d85b1a4d571?w=400&h=300&fit=crop&auto=format",
+    images: [{ url: "https://images.unsplash.com/photo-1556228578-0d85b1a4d571?w=400&h=300&fit=crop&auto=format" }],
     description:
       "Natural body lotion made with Cambodian coconut oil and lemongrass. Deeply moisturising.",
     normalPoints: 14,
@@ -349,8 +351,7 @@ export const products: Product[] = [
     category: "Beverages",
     price: 16,
     stock: 50,
-    image:
-      "https://images.unsplash.com/photo-1608270586620-248524c67de9?w=400&h=300&fit=crop&auto=format",
+    images: [{ url: "https://images.unsplash.com/photo-1608270586620-248524c67de9?w=400&h=300&fit=crop&auto=format" }],
     description:
       "Cambodia's iconic Angkor beer. Crisp and refreshing, perfect for a warm Phnom Penh evening.",
     normalPoints: 16,
@@ -364,8 +365,7 @@ export const products: Product[] = [
     category: "Electronics",
     price: 45,
     stock: 25,
-    image:
-      "https://images.unsplash.com/photo-1590658268037-6bf12165a8df?w=400&h=300&fit=crop&auto=format",
+    images: [{ url: "https://images.unsplash.com/photo-1590658268037-6bf12165a8df?w=400&h=300&fit=crop&auto=format" }],
     description:
       "Compact wireless earbuds with 20-hour battery life. Perfect for commuting through Phnom Penh.",
     normalPoints: 45,
@@ -379,8 +379,7 @@ export const products: Product[] = [
     category: "Snacks",
     price: 6,
     stock: 80,
-    image:
-      "https://images.unsplash.com/photo-1601493700631-2851384deff5?w=400&h=300&fit=crop&auto=format",
+    images: [{ url: "https://images.unsplash.com/photo-1601493700631-2851384deff5?w=400&h=300&fit=crop&auto=format" }],
     description:
       "Sun-dried Cambodian mango strips. Naturally sweet with no added sugar. Sourced from Kampong Speu.",
     normalPoints: 6,
@@ -394,8 +393,7 @@ export const products: Product[] = [
     category: "Beauty",
     price: 22,
     stock: 35,
-    image:
-      "https://images.unsplash.com/photo-1608571423902-eed4a5ad8108?w=400&h=300&fit=crop&auto=format",
+    images: [{ url: "https://images.unsplash.com/photo-1608571423902-eed4a5ad8108?w=400&h=300&fit=crop&auto=format" }],
     description:
       "Pure lemongrass oil extracted from Cambodian farms. Great for aromatherapy and skin care.",
     normalPoints: 22,
@@ -409,8 +407,7 @@ export const products: Product[] = [
     category: "Coffee & Tea",
     price: 20,
     stock: 55,
-    image:
-      "https://images.unsplash.com/photo-1611854779393-1b2da9d400fe?w=400&h=300&fit=crop&auto=format",
+    images: [{ url: "https://images.unsplash.com/photo-1611854779393-1b2da9d400fe?w=400&h=300&fit=crop&auto=format" }],
     description:
       "Single-serve drip coffee bags from Mondulkiri highlands. Rich, dark roast with chocolate notes.",
     normalPoints: 20,
@@ -424,8 +421,7 @@ export const products: Product[] = [
     category: "Accessories",
     price: 9,
     stock: 70,
-    image:
-      "https://images.unsplash.com/photo-1586816879360-004f4d142167?w=400&h=300&fit=crop&auto=format",
+    images: [{ url: "https://images.unsplash.com/photo-1586816879360-004f4d142167?w=400&h=300&fit=crop&auto=format" }],
     description:
       "Handcrafted bamboo phone stand made by local artisans in Siem Reap. Eco-friendly and stylish.",
     normalPoints: 9,
@@ -439,8 +435,7 @@ export const products: Product[] = [
     category: "Accessories",
     price: 28,
     stock: 15,
-    image:
-      "https://images.unsplash.com/photo-1565193566173-7a0ee3dbe261?w=400&h=300&fit=crop&auto=format",
+    images: [{ url: "https://images.unsplash.com/photo-1565193566173-7a0ee3dbe261?w=400&h=300&fit=crop&auto=format" }],
     description:
       "Hand-thrown clay pottery in traditional Khmer designs. A unique home decor piece and cultural gift.",
     normalPoints: 28,

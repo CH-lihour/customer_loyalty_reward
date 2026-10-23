@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { Product } from "../data/mockData";
+import { ProductCover } from "./ProductImage";
 
 type Props = {
   product: Product;
@@ -47,7 +48,7 @@ export function AddToCartDialog({ product, available, money, onClose, onConfirm,
       </div>
 
       <div className="mt-5 flex items-center gap-4 rounded-xl bg-[var(--secondary)] p-3">
-        <img src={product.image} alt="" className="h-20 w-20 shrink-0 rounded-lg object-cover" />
+        <ProductCover images={product.images} alt="" className="h-20 w-20 shrink-0 rounded-lg" />
         <div className="min-w-0">
           <p className="font-semibold leading-snug">{product.name}</p>
           <p className="text-xs text-[var(--muted-foreground)]">{product.nameKh}</p>

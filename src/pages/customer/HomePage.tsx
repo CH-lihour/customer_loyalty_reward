@@ -1,6 +1,7 @@
 ﻿import type { Tier } from "../../data/mockData";
 import { useShop } from "../../data/shop";
 import { TierBadge } from "../../components/TierBadge";
+import { ProductCover } from "../../components/ProductImage";
 import { Icon } from "../../components/Icon";
 
 interface Props {
@@ -91,10 +92,10 @@ export function HomePage({
                 key={product.id}
                 className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)]"
               >
-                <img
-                  src={product.image}
+                <ProductCover
+                  images={product.images}
                   alt={product.name}
-                  className="h-36 w-full object-cover"
+                  className="h-36 w-full"
                 />
                 <div className="p-3">
                   <h3 className="text-sm font-medium">{product.name}</h3>
@@ -315,10 +316,10 @@ export function HomePage({
               className="bg-[var(--card)] rounded-xl overflow-hidden border border-[var(--border)] card-glow transition-all group"
             >
               <div className="relative overflow-hidden bg-[var(--secondary)] h-36">
-                <img
-                  src={p.image}
+                <ProductCover
+                  images={p.images}
                   alt={p.name}
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                  className="w-full h-full group-hover:scale-105 transition-transform duration-500"
                 />
                 {p.bonusMultiplier > 1 && (
                   <span className="absolute top-2 right-2 text-xs bg-[var(--gold-mid)] text-[var(--background)] font-bold px-1.5 py-0.5 rounded-full">

@@ -3,6 +3,7 @@ import { useShop } from "../../data/shop";
 import { useFeedback } from "../../components/FeedbackProvider";
 import { AdminModal } from "../../components/AdminModal";
 import { useModalState } from "../../components/useModalState";
+import { TablePagination, usePagedRows } from "../../components/TablePagination";
 import {
   EmptyRow, PageHeader, Panel, field, formatDateTime, primaryButton, rowClass, secondaryButton, tableClass, theadClass, useStockAccess,
 } from "../../components/StockUi";
@@ -48,6 +49,15 @@ export function AdminStocktakePage({ actorId }: { actorId: string }) {
     if (line.batch) return level?.batches.find((b) => b.batch === line.batch)?.onHand ?? 0;
     return level?.onHand ?? 0;
   };
+  const lineRows = selected
+    ? selected.lines.map((line, index) => {
+        const system = systemQty(selected, line);
+        const variance = line.counted === null ? null : line.counted - system;
+        const cost = shop.stockItemFor(line.rewardId).unitCost;
+        return { line, index, system, variance, value: (variance ?? 0) * cost };
+      })
+    : [];
+  const linesTable = usePagedRows(lineRows);
 
   return (
     <div className="flex flex-col gap-5 pb-8">
@@ -79,12 +89,7 @@ export function AdminStocktakePage({ actorId }: { actorId: string }) {
         </Panel>
 
         {selected ? (() => {
-          const rows = selected.lines.map((line, index) => {
-            const system = systemQty(selected, line);
-            const variance = line.counted === null ? null : line.counted - system;
-            const cost = shop.stockItemFor(line.rewardId).unitCost;
-            return { line, index, system, variance, value: (variance ?? 0) * cost };
-          });
+          const rows = lineRows;
           const counted = rows.filter((r) => r.variance !== null).length;
           const varianceRows = rows.filter((r) => r.variance);
           const netUnits = varianceRows.reduce((n, r) => n + (r.variance ?? 0), 0);
@@ -104,7 +109,7 @@ export function AdminStocktakePage({ actorId }: { actorId: string }) {
                     <tr><th className="p-3">Item</th><th className="p-3">Lot / serial</th>{!blind && <><th className="p-3 text-right">Expected</th><th className="p-3 text-right">{open ? "System now" : "System at post"}</th></>}<th className="p-3 text-right">Counted</th>{!blind && <><th className="p-3 text-right">Variance</th><th className="p-3 text-right">Value</th></>}</tr>
                   </thead>
                   <tbody>
-                    {rows.map(({ line, index, system, variance, value }) => {
+                    {linesTable.rows.map(({ line, index, system, variance, value }) => {
                       const reward = shop.rewards.find((r) => r.id === line.rewardId);
                       const item = shop.stockItemFor(line.rewardId);
                       return (
@@ -133,6 +138,7 @@ export function AdminStocktakePage({ actorId }: { actorId: string }) {
                   </tbody>
                 </table>
               </div>
+              <TablePagination {...linesTable.pagination} />
               <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--border)] bg-[var(--secondary)]/35 px-4 py-3">
                 <p className="text-xs text-[var(--muted-foreground)]">
                   {counted}/{rows.length} lines counted · {varianceRows.length} with variance{!blind && <> · net <span className="font-mono-data">{netUnits > 0 ? "+" : ""}{netUnits}</span> units ({signedMoney(netValue)})</>}

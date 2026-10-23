@@ -18,6 +18,13 @@ const shapes: Record<string, ReactNode> = {
       <path d="M4 8h16l-1 13H5L4 8ZM8 9V6a4 4 0 0 1 8 0v3" />
     </>
   ),
+  image: (
+    <>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <circle cx="8.5" cy="9.5" r="1.5" />
+      <path d="m21 16-5-5-9 9" />
+    </>
+  ),
   cart: (
     <>
       <path d="M3 4h2l2 12h12l2-9H6" />

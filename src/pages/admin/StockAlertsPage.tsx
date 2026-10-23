@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useShop } from "../../data/shop";
 import { useFeedback } from "../../components/FeedbackProvider";
 import { useModalState } from "../../components/useModalState";
+import { TablePagination, usePagedRows } from "../../components/TablePagination";
 import { StockMovementDialog, type StockFormMode, type StockFormPreset } from "../../components/StockMovementDialog";
 import {
   EmptyRow, PageHeader, Panel, StatTile, StatusPill, daysUntil, field, primaryButton, rowClass, tableClass, theadClass, timeLeft, useStockAccess,
@@ -37,6 +38,8 @@ export function AdminStockAlertsPage({ actorId, onNav }: { actorId: string; onNa
     .filter((r) => r.status === "RESERVED" && r.reservedUntil && new Date(r.reservedUntil).getTime() - Date.now() < 24 * 3600000)
     .sort((a, b) => a.reservedUntil!.localeCompare(b.reservedUntil!));
   const rewardExpiring = shop.rewards.filter((r) => r.active && r.expiresAt && daysUntil(r.expiresAt) <= 30);
+  const attentionTable = usePagedRows(attention);
+  const batchTable = usePagedRows(batches);
 
   const saveHours = () => {
     const error = shop.saveStockSettings(actorId, { reservationHours: hours });
@@ -61,7 +64,7 @@ export function AdminStockAlertsPage({ actorId, onNav }: { actorId: string; onNa
               <tr><th className="p-3">Item</th><th className="p-3">Status</th><th className="p-3 text-right">Available</th><th className="p-3 text-right">Threshold / ROP</th><th className="p-3 text-right">Backordered</th><th className="p-3 text-right">Suggested</th><th className="p-3">Supplier</th><th className="p-3" /></tr>
             </thead>
             <tbody>
-              {attention.map(({ reward, item, totals, backordered, waiting, status, suggested }) => (
+              {attentionTable.rows.map(({ reward, item, totals, backordered, waiting, status, suggested }) => (
                 <tr key={reward.id} className={rowClass}>
                   <td className="p-3"><div className="font-medium">{reward.name}</div><div className="font-mono-data text-xs text-[var(--muted-foreground)]">{item.sku}{waiting ? ` · ${waiting} waiting` : ""}</div></td>
                   <td className="p-3"><StatusPill status={status} /></td>
@@ -84,6 +87,7 @@ export function AdminStockAlertsPage({ actorId, onNav }: { actorId: string; onNa
             </tbody>
           </table>
         </div>
+        <TablePagination {...attentionTable.pagination} />
       </Panel>
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
@@ -92,7 +96,7 @@ export function AdminStockAlertsPage({ actorId, onNav }: { actorId: string; onNa
             <table className={`${tableClass} min-w-[520px]`}>
               <thead className={theadClass}><tr><th className="p-3">Item · batch</th><th className="p-3">Location</th><th className="p-3 text-right">Units</th><th className="p-3">Expires</th><th className="p-3" /></tr></thead>
               <tbody>
-                {batches.map(({ level, batch, expired }) => {
+                {batchTable.rows.map(({ level, batch, expired }) => {
                   const reward = shop.rewards.find((r) => r.id === level.rewardId);
                   const item = shop.stockItemFor(level.rewardId);
                   return (
@@ -116,6 +120,7 @@ export function AdminStockAlertsPage({ actorId, onNav }: { actorId: string; onNa
               </tbody>
             </table>
           </div>
+          <TablePagination {...batchTable.pagination} />
           {rewardExpiring.length > 0 && (
             <p className="border-t border-[var(--border)] px-4 py-3 text-xs text-orange-400">
               Reward offers ending soon: {rewardExpiring.map((r) => `${r.name} (${r.expiresAt})`).join(", ")}

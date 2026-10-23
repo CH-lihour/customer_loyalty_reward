@@ -4,6 +4,8 @@ import { useModalState } from "../../components/useModalState";
 import { Icon } from "../../components/Icon";
 import { useFeedback } from "../../components/FeedbackProvider";
 import { useShop } from "../../data/shop";
+import { apiSaveRole } from "../../data/api";
+import { useApiStaff } from "../../data/staff";
 import { adminPageLabels, inventoryPages, type AdminPage, type AdminRole } from "../../data/adminAccess";
 import { stockAuthorityLabels } from "../../data/stock";
 
@@ -45,15 +47,19 @@ const pageDetails: Partial<Record<AdminPage, { icon: string; description: string
   suppliers: { icon: "supplier", description: "Suppliers and locations" },
 };
 
-export function AdminRolesPage({ actorId }: { actorId: string }) {
-  const { roleLabels, rolePermissions, saveRolePermissions, createAdminRole, stockAuthority, saveStockAuthority } = useShop();
+export function AdminRolesPage({ actorId, token }: { actorId: string; token: string }) {
+  const { roleLabels, rolePermissions, stockAuthority, logStaffAction } = useShop();
   const { notify } = useFeedback();
-  const [role, setRole] = useState<AdminRole>("marketing_manager");
+  const { roleId, loadError, reload } = useApiStaff(token);
+  const [selectedRole, setRole] = useState<AdminRole>("marketing_manager");
   const [draft, setDraft] = useState<Partial<Record<AdminRole, AdminPage[]>>>({});
   const [creating, setCreating, createDialogClosing] = useModalState<boolean>(false);
   const [newRoleName, setNewRoleName] = useState("");
   const [createError, setCreateError] = useState("");
+  const [saving, setSaving] = useState(false);
   const roles = Object.keys(roleLabels);
+  // Fall back to the first role when the selected one is not in the loaded list.
+  const role = roleLabels[selectedRole] ? selectedRole : (roles.find((item) => item !== "super_admin") ?? roles[0] ?? selectedRole);
   const readOnly = role === "super_admin";
   const selected = draft[role] ?? rolePermissions[role] ?? [];
   const enabledCount = editablePages.filter((page) => selected.includes(page)).length;
@@ -67,30 +73,53 @@ export function AdminRolesPage({ actorId }: { actorId: string }) {
   const toggle = (page: AdminPage) => updatePermissions(selected.includes(page)
     ? selected.filter((item) => item !== page)
     : [...selected, page]);
-  const changeStockAuthority = (level: "clerk" | "manager") => {
-    const result = saveStockAuthority(actorId, role, level);
-    notify(result ?? `${roleLabels[role]} now has ${stockAuthorityLabels[level].toLowerCase()} authority.`, result ? "error" : "success");
+  const changeStockAuthority = async (level: "clerk" | "manager") => {
+    try {
+      await apiSaveRole(token, roleId(role), { stock_authority: level });
+      await reload();
+      logStaffAction(actorId, "STOCK_AUTHORITY_UPDATED", `${roleLabels[role]} stock authority set to ${level}`);
+      notify(`${roleLabels[role]} now has ${stockAuthorityLabels[level].toLowerCase()} authority.`, "success");
+    } catch (failure) {
+      notify((failure as Error).message, "error");
+    }
   };
-  const save = () => {
-    if (readOnly || !hasChanges) return;
-    const result = saveRolePermissions(actorId, role, selected);
-    if (result) return notify(result, "error");
-    setDraft((current) => ({ ...current, [role]: undefined }));
-    notify(`${roleLabels[role]} permissions saved.`, "success");
+  const save = async () => {
+    if (readOnly || !hasChanges || saving) return;
+    const pages = editablePages.filter((page) => selected.includes(page));
+    setSaving(true);
+    try {
+      await apiSaveRole(token, roleId(role), { pages });
+      await reload();
+      logStaffAction(actorId, "ROLE_PERMISSIONS_UPDATED", `Updated ${roleLabels[role]} permissions: ${[...pages, "profile"].join(", ")}`);
+      setDraft((current) => ({ ...current, [role]: undefined }));
+      notify(`${roleLabels[role]} permissions saved.`, "success");
+    } catch (failure) {
+      notify((failure as Error).message, "error");
+    } finally {
+      setSaving(false);
+    }
   };
   const openCreate = () => {
     setNewRoleName("");
     setCreateError("");
     setCreating(true);
   };
-  const create = (event: FormEvent<HTMLFormElement>) => {
+  const create = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const result = createAdminRole(actorId, newRoleName);
-    if (result.error) return setCreateError(result.error);
-    if (!result.roleId) return;
-    setCreating(false);
-    setRole(result.roleId);
-    notify(`${newRoleName.trim()} role created.`, "success");
+    if (saving) return;
+    setSaving(true);
+    try {
+      const created = await apiSaveRole(token, null, { label: newRoleName });
+      await reload();
+      logStaffAction(actorId, "ROLE_CREATED", `Created staff role ${created.label}`);
+      setCreating(false);
+      setRole(created.code);
+      notify(`${created.label} role created.`, "success");
+    } catch (failure) {
+      setCreateError((failure as Error).message);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -103,6 +132,7 @@ export function AdminRolesPage({ actorId }: { actorId: string }) {
         </div>
         <button type="button" onClick={openCreate} className="rounded-lg bg-[var(--gold-mid)] px-4 py-2 text-sm font-semibold text-[var(--background)]">+ Create role</button>
       </header>
+      {loadError && <p role="alert" className="rounded-lg border border-red-400/40 p-3 text-sm text-red-400">Couldn't load roles: {loadError}</p>}
 
       <section aria-label="Staff roles" className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
         {roles.map((item) => {
@@ -200,7 +230,7 @@ export function AdminRolesPage({ actorId }: { actorId: string }) {
           <p className="text-xs text-[var(--muted-foreground)]">{readOnly ? "Super Admin access cannot be changed." : hasChanges ? enabledCount === 0 ? "Select at least one section before saving." : "You have unsaved permission changes." : "All permission changes are saved."}</p>
           {!readOnly && <div className="flex gap-2">
             <button type="button" onClick={() => setDraft((current) => ({ ...current, [role]: undefined }))} disabled={!hasChanges} className="rounded-lg border border-[var(--border)] px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-40">Discard</button>
-            <button type="button" onClick={save} disabled={!hasChanges || enabledCount === 0} className="rounded-lg bg-[var(--gold-mid)] px-4 py-2 text-sm font-semibold text-[var(--background)] disabled:cursor-not-allowed disabled:opacity-40">Save permissions</button>
+            <button type="button" onClick={() => void save()} disabled={!hasChanges || enabledCount === 0 || saving} className="rounded-lg bg-[var(--gold-mid)] px-4 py-2 text-sm font-semibold text-[var(--background)] disabled:cursor-not-allowed disabled:opacity-40">Save permissions</button>
           </div>}
         </div>
       </section>
@@ -218,7 +248,7 @@ export function AdminRolesPage({ actorId }: { actorId: string }) {
           {createError && <p role="alert" className="text-sm text-red-400">{createError}</p>}
           <div className="flex justify-end gap-2">
             <button type="button" onClick={() => setCreating(false)} className="rounded-lg border border-[var(--border)] px-4 py-2 text-sm">Cancel</button>
-            <button type="submit" className="rounded-lg bg-[var(--gold-mid)] px-4 py-2 text-sm font-semibold text-[var(--background)]">Create role</button>
+            <button type="submit" disabled={saving} className="rounded-lg bg-[var(--gold-mid)] px-4 py-2 text-sm font-semibold text-[var(--background)] disabled:opacity-60">{saving ? "Creating…" : "Create role"}</button>
           </div>
         </form>
       </AdminModal>}

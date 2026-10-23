@@ -3,6 +3,7 @@ import { useShop } from "../../data/shop"
 import { useFeedback } from "../../components/FeedbackProvider"
 import { AdminModal } from "../../components/AdminModal"
 import { useModalState } from "../../components/useModalState"
+import { TablePagination, usePagedRows } from "../../components/TablePagination"
 
 export function AdminPointsPage() {
   const {
@@ -11,6 +12,7 @@ export function AdminPointsPage() {
     adjustPoints: applyAdjustment,
   } = useShop()
   const { notify } = useFeedback()
+  const table = usePagedRows(txs)
   const [showAdjust, setShowAdjust, modalClosing] = useModalState<boolean>(false)
   const [adjustUserId, setAdjustUserId] = useState("u1")
   const [adjustPoints, setAdjustPoints] = useState("")
@@ -127,7 +129,7 @@ export function AdminPointsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-[var(--border)]">
-              {txs.map((tx) => (
+              {table.rows.map((tx) => (
                 <tr
                   key={tx.id}
                   className="hover:bg-[var(--secondary)] transition-colors"
@@ -162,6 +164,7 @@ export function AdminPointsPage() {
             </tbody>
           </table>
         </div>
+        <TablePagination {...table.pagination} />
       </div>
     </div>
   )

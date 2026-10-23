@@ -42,8 +42,7 @@ export const extraProducts: Product[] = [
     category: "Snacks",
     price: 7,
     stock: 55,
-    image:
-      "https://images.unsplash.com/photo-1606313564200-e75d5e30476c?w=400&h=300&fit=crop&auto=format",
+    images: [{ url: "https://images.unsplash.com/photo-1606313564200-e75d5e30476c?w=400&h=300&fit=crop&auto=format" }],
     description: "Cambodian palm sugar sweets made by local producers.",
     normalPoints: 7,
     bonusMultiplier: 1,
@@ -56,8 +55,7 @@ export const extraProducts: Product[] = [
     category: "Food & Grocery",
     price: 15,
     stock: 40,
-    image:
-      "https://images.unsplash.com/photo-1596040033229-a9821ebd058d?w=400&h=300&fit=crop&auto=format",
+    images: [{ url: "https://images.unsplash.com/photo-1596040033229-a9821ebd058d?w=400&h=300&fit=crop&auto=format" }],
     description: "A gift jar of fragrant Kampot pepper.",
     normalPoints: 15,
     bonusMultiplier: 2,
@@ -70,8 +68,7 @@ export const extraProducts: Product[] = [
     category: "Clothing",
     price: 13,
     stock: 35,
-    image:
-      "https://images.unsplash.com/photo-1606760227091-3dd870d97f1d?w=400&h=300&fit=crop&auto=format",
+    images: [{ url: "https://images.unsplash.com/photo-1606760227091-3dd870d97f1d?w=400&h=300&fit=crop&auto=format" }],
     description: "Traditional handwoven cotton krama scarf.",
     normalPoints: 13,
     bonusMultiplier: 1.5,

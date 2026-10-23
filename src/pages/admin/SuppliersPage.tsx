@@ -4,6 +4,7 @@ import { useFeedback } from "../../components/FeedbackProvider";
 import { AdminModal } from "../../components/AdminModal";
 import { ActionIconButton } from "../../components/ActionIconButton";
 import { useModalState } from "../../components/useModalState";
+import { TablePagination, usePagedRows } from "../../components/TablePagination";
 import { EmptyRow, PageHeader, Panel, field, primaryButton, rowClass, secondaryButton, tableClass, theadClass, useStockAccess } from "../../components/StockUi";
 import { totalsFor, type StockLocation, type Supplier } from "../../data/stock";
 
@@ -19,6 +20,8 @@ export function AdminSuppliersPage({ actorId }: { actorId: string }) {
   const [supplier, setSupplier, supplierClosing] = useModalState<Supplier | null>(null);
   const [location, setLocation, locationClosing] = useModalState<StockLocation | null>(null);
   const [error, setError] = useState("");
+  const supplierTable = usePagedRows(shop.suppliers);
+  const locationTable = usePagedRows(shop.stockLocations);
 
   const toggleSupplier = (x: Supplier) => {
     const result = shop.saveSupplier(actorId, { ...x, active: !x.active });
@@ -56,7 +59,7 @@ export function AdminSuppliersPage({ actorId }: { actorId: string }) {
           <table className={tableClass}>
             <thead className={theadClass}><tr><th className="p-3">Name</th><th className="p-3">Type</th><th className="p-3">Contact</th><th className="p-3 text-right">Items</th><th className="p-3 text-right">Received (90d)</th><th className="p-3">Status</th><th className="p-3" /></tr></thead>
             <tbody>
-              {shop.suppliers.map((x) => {
+              {supplierTable.rows.map((x) => {
                 const since = new Date(Date.now() - 90 * 86400000).toISOString();
                 const received = shop.stockMovements.filter((m) => m.type === "RECEIVE" && m.supplierId === x.id && m.createdAt >= since).reduce((n, m) => n + m.onHand, 0);
                 return (
@@ -82,6 +85,7 @@ export function AdminSuppliersPage({ actorId }: { actorId: string }) {
             </tbody>
           </table>
         </div>
+        <TablePagination {...supplierTable.pagination} />
       </Panel>
 
       <Panel title="Stock locations" description="Warehouses, stores, and pickup points. Redemptions reserve from the active location with the most available stock." flush
@@ -90,7 +94,7 @@ export function AdminSuppliersPage({ actorId }: { actorId: string }) {
           <table className={tableClass}>
             <thead className={theadClass}><tr><th className="p-3">Location</th><th className="p-3">Type</th><th className="p-3 text-right">On hand</th><th className="p-3 text-right">Reserved</th><th className="p-3 text-right">Value</th><th className="p-3">Status</th><th className="p-3" /></tr></thead>
             <tbody>
-              {shop.stockLocations.map((x) => {
+              {locationTable.rows.map((x) => {
                 const totals = totalsFor(shop.stockLevels, { locationId: x.id });
                 const value = shop.stockLevels.filter((l) => l.locationId === x.id).reduce((n, l) => n + l.onHand * shop.stockItemFor(l.rewardId).unitCost, 0);
                 return (
@@ -115,6 +119,7 @@ export function AdminSuppliersPage({ actorId }: { actorId: string }) {
             </tbody>
           </table>
         </div>
+        <TablePagination {...locationTable.pagination} />
       </Panel>
       {!manager && <p className="text-xs text-[var(--muted-foreground)]">Only stock managers and admins can edit suppliers and locations.</p>}
 

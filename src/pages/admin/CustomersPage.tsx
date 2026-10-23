@@ -6,6 +6,7 @@ import { TierBadge } from "../../components/TierBadge"
 import { AdminModal } from "../../components/AdminModal"
 import { useModalState } from "../../components/useModalState"
 import { ActionIconButton } from "../../components/ActionIconButton"
+import { TablePagination, usePagedRows } from "../../components/TablePagination"
 
 const riskLabel = (lastOrder: string) => {
   const days = Math.floor(
@@ -44,6 +45,7 @@ export function AdminCustomersPage() {
     const matchTier = tierFilter === "All" || c.tier === tierFilter
     return matchSearch && matchTier
   })
+  const table = usePagedRows(filtered)
 
   return (
     <div className="flex flex-col gap-5">
@@ -91,7 +93,7 @@ export function AdminCustomersPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-[var(--border)]">
-              {filtered.map((c) => {
+              {table.rows.map((c) => {
                 const risk = riskLabel(c.lastOrder)
                 return (
                   <tr
@@ -147,6 +149,7 @@ export function AdminCustomersPage() {
             </tbody>
           </table>
         </div>
+        <TablePagination {...table.pagination} />
       </div>
       {editingCustomer && (
         <AdminModal

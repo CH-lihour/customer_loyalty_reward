@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useShop } from "../../data/shop";
 import { useFeedback } from "../../components/FeedbackProvider";
 import { useModalState } from "../../components/useModalState";
+import { TablePagination, usePagedRows } from "../../components/TablePagination";
 import { StockMovementDialog, type StockFormMode, type StockFormPreset } from "../../components/StockMovementDialog";
 import { EmptyRow, PageHeader, filterControl, formatDateTime, rowClass, tableClass, theadClass, timeLeft, useStockAccess } from "../../components/StockUi";
 import { levelKey, type Redemption, type RedemptionStatus } from "../../data/stock";
@@ -34,6 +35,13 @@ export function AdminFulfillmentPage({ actorId }: { actorId: string }) {
   const backordered = shop.redemptions.filter((r) => r.status === "BACKORDERED").reverse();
   const history = shop.redemptions.filter((r) => !["RESERVED", "BACKORDERED"].includes(r.status) && inLocation(r));
   const requests = shop.restockRequests;
+  const pagedTables = {
+    reserved: usePagedRows(reserved),
+    backordered: usePagedRows(backordered),
+    notify: usePagedRows(requests),
+    history: usePagedRows(history),
+  };
+  const backorderOffset = (pagedTables.backordered.pagination.page - 1) * pagedTables.backordered.pagination.pageSize;
   const tabs: { id: Tab; label: string; count: number }[] = [
     { id: "reserved", label: "To fulfil", count: reserved.length },
     { id: "backordered", label: "Backordered", count: backordered.length },
@@ -71,12 +79,13 @@ export function AdminFulfillmentPage({ actorId }: { actorId: string }) {
         )}
       </div>
 
-      <div className="overflow-x-auto rounded-xl border border-[var(--border)] bg-[var(--card)]">
+      <div className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)]">
+        <div className="overflow-x-auto">
         {tab === "reserved" && (
           <table className={`${tableClass} min-w-[900px]`}>
             <thead className={theadClass}><tr><th className="p-3">Customer</th><th className="p-3">Reward</th><th className="p-3">Pick from</th><th className="p-3">Reserved</th><th className="p-3">Hold</th><th className="p-3 text-right">Actions</th></tr></thead>
             <tbody>
-              {reserved.map((r) => {
+              {pagedTables.reserved.rows.map((r) => {
                 const item = shop.stockItemFor(r.rewardId);
                 const level = shop.stockLevels.find((l) => l.key === levelKey(r.rewardId, r.variantId, r.locationId ?? ""));
                 const left = new Date(r.reservedUntil ?? 0).getTime() - Date.now();
@@ -116,12 +125,12 @@ export function AdminFulfillmentPage({ actorId }: { actorId: string }) {
           <table className={tableClass}>
             <thead className={theadClass}><tr><th className="p-3">Customer</th><th className="p-3">Reward</th><th className="p-3">Since</th><th className="p-3">Queue</th><th className="p-3 text-right">Actions</th></tr></thead>
             <tbody>
-              {backordered.map((r, index) => (
+              {pagedTables.backordered.rows.map((r, index) => (
                 <tr key={r.id} className={rowClass}>
                   <td className="p-3">{customer(r.userId)}<div className="text-xs text-[var(--muted-foreground)]">{r.points} pts paid</div></td>
                   <td className="p-3">{r.rewardName}</td>
                   <td className="p-3 text-xs">{r.createdAt}</td>
-                  <td className="p-3 text-xs">#{index + 1} · reserved automatically when stock arrives</td>
+                  <td className="p-3 text-xs">#{backorderOffset + index + 1} · reserved automatically when stock arrives</td>
                   <td className="p-3 text-right"><button type="button" disabled={!can("manager")} onClick={() => void cancel(r)} className={`${linkButton} text-red-400`}>Cancel & refund</button></td>
                 </tr>
               ))}
@@ -134,7 +143,7 @@ export function AdminFulfillmentPage({ actorId }: { actorId: string }) {
           <table className={tableClass}>
             <thead className={theadClass}><tr><th className="p-3">Customer</th><th className="p-3">Reward</th><th className="p-3">Requested</th><th className="p-3">Status</th></tr></thead>
             <tbody>
-              {requests.map((r) => {
+              {pagedTables.notify.rows.map((r) => {
                 const reward = shop.rewards.find((x) => x.id === r.rewardId);
                 const item = shop.stockItemFor(r.rewardId);
                 const variant = item.variants.find((v) => v.id === r.variantId);
@@ -156,7 +165,7 @@ export function AdminFulfillmentPage({ actorId }: { actorId: string }) {
           <table className={`${tableClass} min-w-[900px]`}>
             <thead className={theadClass}><tr><th className="p-3">Customer</th><th className="p-3">Reward</th><th className="p-3">Status</th><th className="p-3">Detail</th><th className="p-3">When</th><th className="p-3 text-right" /></tr></thead>
             <tbody>
-              {history.map((r) => (
+              {pagedTables.history.rows.map((r) => (
                 <tr key={r.id} className={rowClass}>
                   <td className="p-3">{customer(r.userId)}</td>
                   <td className="p-3">{r.rewardName}<div className="text-xs text-[var(--muted-foreground)]">{r.points} pts{r.legacy ? " · before stock ledger" : ""}</div></td>
@@ -179,6 +188,8 @@ export function AdminFulfillmentPage({ actorId }: { actorId: string }) {
             </tbody>
           </table>
         )}
+        </div>
+        <TablePagination {...pagedTables[tab].pagination} />
       </div>
       {dialog && <StockMovementDialog actorId={actorId} mode={dialog.mode} preset={dialog.preset} onClose={() => setDialog(null)} closing={dialogClosing} />}
     </div>
