@@ -4,8 +4,7 @@ import { useFeedback } from '../../components/FeedbackProvider';
 import { TierBadge } from '../../components/TierBadge';
 import { Icon } from '../../components/Icon';
 import { ActionIconButton } from '../../components/ActionIconButton';
-
-const provinces = ['Phnom Penh', 'Siem Reap', 'Battambang', 'Kampong Cham', 'Kampot', 'Sihanoukville', 'Kandal', 'Takeo'];
+import { provinces } from '../../data/mockData';
 const field = 'w-full rounded-lg border border-[var(--border)] bg-[var(--secondary)] px-3 py-2 text-sm outline-none focus:border-[var(--gold-mid)]';
 
 export function ProfilePage() {

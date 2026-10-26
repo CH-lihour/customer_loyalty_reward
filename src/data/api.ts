@@ -17,8 +17,12 @@ export type ApiProfile = {
   id: number;
   name: string;
   email: string;
-  phone?: string;
+  phone?: string | null;
   points_balance?: number;
+  /** Customer only, and only sent on registration. */
+  name_kh?: string | null;
+  province?: string | null;
+  referral_code?: string;
   /** Staff only: the role and the admin pages it grants. */
   is_active?: boolean;
   role?: ApiStaffRole | null;
@@ -83,6 +87,34 @@ export async function apiLogin(role: LoginRole, email: string, password: string)
   return token;
 }
 
+/** Fields of the customer sign-up form. `referralCode` is the code of the customer who invited them. */
+export type RegisterFields = {
+  name: string;
+  email: string;
+  password: string;
+  phone: string;
+  province: string;
+  referralCode: string;
+};
+
+/** Creates a customer account. The API signs the new customer in and returns their token and profile. */
+export async function apiRegister(fields: RegisterFields) {
+  // The API stores blank optional fields as null.
+  const { token, customer } = await request<{ token: string; customer: ApiProfile }>("/register", {
+    method: "POST",
+    body: {
+      name: fields.name,
+      email: fields.email,
+      password: fields.password,
+      phone: fields.phone,
+      province: fields.province,
+      referral_code: fields.referralCode,
+      device_name: "KhmerShop web",
+    },
+  });
+  return { token, customer };
+}
+
 export async function apiProfile(role: LoginRole, token: string) {
   const { data } = await request<{ data: ApiProfile }>(`${prefix(role)}/profile`, { token });
   return data;
@@ -98,6 +130,7 @@ type ApiCategory = {
   name_kh: string | null;
   description: string | null;
   is_active: boolean;
+  parent_id: number | null;
 };
 
 type ApiProduct = {
@@ -120,6 +153,7 @@ const toCategory = (c: ApiCategory): ProductCategory => ({
   nameKh: c.name_kh ?? "",
   description: c.description ?? "",
   active: c.is_active,
+  parentId: c.parent_id === null ? "" : String(c.parent_id),
 });
 
 /** Stock is not part of the product API, so it starts at 0 and the store keeps its own count. */
@@ -192,6 +226,7 @@ export async function apiSaveCategory(token: string, category: Partial<ProductCa
     ...(category.nameKh !== undefined && { name_kh: category.nameKh || null }),
     ...(category.description !== undefined && { description: category.description || null }),
     ...(category.active !== undefined && { is_active: category.active }),
+    ...(category.parentId !== undefined && { parent_id: category.parentId ? Number(category.parentId) : null }),
   };
   await request(category.id ? `/backend/categories/${category.id}` : "/backend/categories", {
     method: category.id ? "PATCH" : "POST",

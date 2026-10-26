@@ -7,7 +7,15 @@ import { AddToCartDialog } from "./components/AddToCartDialog";
 import { useModalState } from "./components/useModalState";
 import { AdminLayout, type AdminPage } from "./components/AdminLayout";
 import { adminPages, type AdminRole } from "./data/adminAccess";
-import { ApiError, apiLogin, apiLogout, apiProfile, type ApiProfile } from "./data/api";
+import {
+  ApiError,
+  apiLogin,
+  apiLogout,
+  apiProfile,
+  apiRegister,
+  type ApiProfile,
+  type RegisterFields,
+} from "./data/api";
 
 import { HomePage } from "./pages/customer/HomePage";
 import { ProductsPage } from "./pages/customer/ProductsPage";
@@ -352,6 +360,21 @@ export default function App() {
     return null;
   };
 
+  /** Creates the customer account through the API, which signs them straight in. */
+  const register = async (fields: RegisterFields): Promise<string | null> => {
+    let token: string;
+    let customer: ApiProfile;
+    try {
+      ({ token, customer } = await apiRegister(fields));
+    } catch (error) {
+      return error instanceof ApiError ? error.message : "Registration failed.";
+    }
+    const userId = shop.linkApiCustomer(customer);
+    shop.selectCustomer(userId);
+    beginSession({ role: "customer", userId, token });
+    return null;
+  };
+
   const logout = () => {
     shop.setCart([]);
     if (session) apiLogout(session.role, session.token).catch(() => {});
@@ -451,6 +474,7 @@ export default function App() {
           navigate({ role: "customer", page: "home" });
         }}
         onLogin={login}
+        onRegister={register}
       />
     );
   }

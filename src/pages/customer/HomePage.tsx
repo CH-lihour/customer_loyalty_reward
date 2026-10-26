@@ -7,6 +7,7 @@ import { Icon } from "../../components/Icon";
 interface Props {
   onNav: (p: string) => void;
   onAddToCart: (productId: string) => void;
+  onViewProduct: (productId: string) => void;
   guest?: boolean;
   onSignIn?: () => void;
 }
@@ -14,6 +15,7 @@ interface Props {
 export function HomePage({
   onNav,
   onAddToCart,
+  onViewProduct,
   guest = false,
   onSignIn,
 }: Props) {
@@ -92,13 +94,28 @@ export function HomePage({
                 key={product.id}
                 className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)]"
               >
-                <ProductCover
-                  images={product.images}
-                  alt={product.name}
-                  className="h-36 w-full"
-                />
+                <button
+                  type="button"
+                  aria-label={`View details for ${product.name}`}
+                  onClick={() => onViewProduct(product.id)}
+                  className="block w-full"
+                >
+                  <ProductCover
+                    images={product.images}
+                    alt={product.name}
+                    className="h-36 w-full"
+                  />
+                </button>
                 <div className="p-3">
-                  <h3 className="text-sm font-medium">{product.name}</h3>
+                  <h3 className="text-sm font-medium">
+                    <button
+                      type="button"
+                      onClick={() => onViewProduct(product.id)}
+                      className="text-left hover:text-[var(--gold-mid)]"
+                    >
+                      {product.name}
+                    </button>
+                  </h3>
                   <p className="text-xs text-[var(--muted-foreground)]">
                     {product.nameKh}
                   </p>
@@ -315,7 +332,12 @@ export function HomePage({
               key={p.id}
               className="bg-[var(--card)] rounded-xl overflow-hidden border border-[var(--border)] card-glow transition-all group"
             >
-              <div className="relative overflow-hidden bg-[var(--secondary)] h-36">
+              <button
+                type="button"
+                aria-label={`View details for ${p.name}`}
+                onClick={() => onViewProduct(p.id)}
+                className="relative block w-full overflow-hidden bg-[var(--secondary)] h-36"
+              >
                 <ProductCover
                   images={p.images}
                   alt={p.name}
@@ -326,9 +348,15 @@ export function HomePage({
                     {p.bonusMultiplier}× pts
                   </span>
                 )}
-              </div>
+              </button>
               <div className="p-3">
-                <div className="text-sm font-medium leading-snug">{p.name}</div>
+                <button
+                  type="button"
+                  onClick={() => onViewProduct(p.id)}
+                  className="block text-left text-sm font-medium leading-snug hover:text-[var(--gold-mid)]"
+                >
+                  {p.name}
+                </button>
                 <div className="text-xs text-[var(--muted-foreground)] mt-0.5">
                   {p.nameKh}
                 </div>

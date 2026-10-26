@@ -106,6 +106,9 @@ export interface Badge {
   threshold?: number;
 }
 
+/** Provinces a customer can pick on sign-up and in their profile. */
+export const provinces = ["Phnom Penh", "Siem Reap", "Battambang", "Kampong Cham", "Kampot", "Sihanoukville", "Kandal", "Takeo"];
+
 export const CURRENT_USER: Customer = {
   id: "u1",
   name: "Sophea Chan",
@@ -451,6 +454,8 @@ export interface ProductCategory {
   description: string;
   /** Inactive categories are hidden from the storefront and cannot be assigned to products. */
   active: boolean;
+  /** The category this one sits under; absent or empty for a top-level category. */
+  parentId?: string;
 }
 
 export const productCategories: ProductCategory[] = [

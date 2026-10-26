@@ -389,17 +389,6 @@ button:disabled {
   font-weight: 700;
   font-size: 1.25rem;
 }
-.product-dialog {
-  width: min(100%, 36rem);
-  max-height: calc(100dvh - 2rem);
-  overflow-y: auto;
-  border: 1px solid rgba(232, 166, 52, 0.3);
-  border-radius: 1rem;
-  color: var(--foreground);
-  background: var(--card);
-  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.5);
-  animation: dialog-enter 0.26s cubic-bezier(0.2, 0.8, 0.2, 1) both;
-}
 .add-to-cart-dialog {
   position: fixed;
   width: min(100% - 2rem, 28rem);
@@ -475,8 +464,7 @@ button:disabled {
 .modal-backdrop-leaving {
   animation: backdrop-leave 0.22s ease-in both;
 }
-.modal-backdrop-leaving .feedback-dialog,
-.modal-backdrop-leaving .product-dialog {
+.modal-backdrop-leaving .feedback-dialog {
   animation: dialog-leave 0.22s ease-in both;
 }
 @media (prefers-reduced-motion: reduce) {
@@ -485,7 +473,6 @@ button:disabled {
   .feedback-toast-leaving,
   .feedback-backdrop,
   .feedback-dialog,
-  .product-dialog,
   .add-to-cart-dialog,
   .image-preview-dialog,
   .admin-modal {
@@ -494,8 +481,7 @@ button:disabled {
   .modal-leaving,
   .modal-leaving::backdrop,
   .modal-backdrop-leaving,
-  .modal-backdrop-leaving .feedback-dialog,
-  .modal-backdrop-leaving .product-dialog {
+  .modal-backdrop-leaving .feedback-dialog {
     animation: none;
   }
   button,

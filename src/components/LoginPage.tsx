@@ -1,4 +1,6 @@
 ﻿import { useState, type FormEvent } from "react";
+import type { RegisterFields } from "../data/api";
+import { provinces } from "../data/mockData";
 import { useFeedback } from "./FeedbackProvider";
 import { Icon } from "./Icon";
 import { ThemeToggle } from "./ThemeToggle";
@@ -8,8 +10,19 @@ export type LoginRole = "customer" | "admin";
 interface Props {
   role?: LoginRole;
   onLogin: (role: LoginRole, email: string, password: string) => Promise<string | null>;
+  /** Customer sign-up. Returns an error message, or null once the new account is signed in. */
+  onRegister?: (fields: RegisterFields) => Promise<string | null>;
   onBrowse: () => void;
 }
+
+const emptyRegistration: RegisterFields = {
+  name: "",
+  email: "",
+  password: "",
+  phone: "",
+  province: "",
+  referralCode: "",
+};
 
 /** Per-portal form styling: a soft, rounded storefront look for customers and a compact console look for staff. */
 const formStyles: Record<LoginRole, { label: string; input: string; toggle: string; submit: string; placeholder: string }> = {
@@ -33,14 +46,46 @@ const formStyles: Record<LoginRole, { label: string; input: string; toggle: stri
   },
 };
 
-export function LoginPage({ role = "customer", onLogin, onBrowse }: Props) {
+export function LoginPage({ role = "customer", onLogin, onRegister, onBrowse }: Props) {
   const { notify } = useFeedback();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [registering, setRegistering] = useState(false);
+  const [registration, setRegistration] = useState(emptyRegistration);
   const styles = formStyles[role];
+
+  const switchMode = (toRegister: boolean) => {
+    setRegistering(toRegister);
+    setError("");
+    setShowPassword(false);
+  };
+
+  const editRegistration = (name: keyof RegisterFields, value: string) =>
+    setRegistration((fields) => ({ ...fields, [name]: value }));
+
+  const submitRegistration = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (submitting || !onRegister) return;
+    setSubmitting(true);
+    const result = await onRegister({
+      ...registration,
+      name: registration.name.trim(),
+      email: registration.email.trim(),
+      phone: registration.phone.trim(),
+      referralCode: registration.referralCode.trim(),
+    });
+    setSubmitting(false);
+    if (result) {
+      setError(result);
+      notify(result, "error");
+    } else {
+      setError("");
+      notify("Welcome to KhmerShop! Your account is ready.", "success");
+    }
+  };
 
   const submitLogin = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -107,6 +152,104 @@ export function LoginPage({ role = "customer", onLogin, onBrowse }: Props) {
       </button>
     </form>
   );
+
+  const registerForm = (
+    <form onSubmit={submitRegistration} className="space-y-4">
+      <label className={styles.label}>
+        Full name
+        <input
+          required
+          autoComplete="name"
+          maxLength={255}
+          className={`mt-1.5 ${styles.input}`}
+          value={registration.name}
+          onChange={(event) => editRegistration("name", event.target.value)}
+        />
+      </label>
+      <label className={styles.label}>
+        Email
+        <input
+          required
+          type="email"
+          autoComplete="email"
+          maxLength={255}
+          className={`mt-1.5 ${styles.input}`}
+          placeholder={styles.placeholder}
+          value={registration.email}
+          onChange={(event) => editRegistration("email", event.target.value)}
+        />
+      </label>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <label className={styles.label}>
+          Phone <span className="text-[var(--muted-foreground)]">(optional)</span>
+          <input
+            type="tel"
+            autoComplete="tel"
+            maxLength={32}
+            className={`mt-1.5 ${styles.input}`}
+            placeholder="012 345 678"
+            value={registration.phone}
+            onChange={(event) => editRegistration("phone", event.target.value)}
+          />
+        </label>
+        <label className={styles.label}>
+          Province <span className="text-[var(--muted-foreground)]">(optional)</span>
+          <select
+            className={`mt-1.5 ${styles.input}`}
+            value={registration.province}
+            onChange={(event) => editRegistration("province", event.target.value)}
+          >
+            <option value="">Select a province</option>
+            {provinces.map((province) => (
+              <option key={province}>{province}</option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <label className={styles.label}>
+        Password
+        <div className="relative mt-1.5">
+          <input
+            required
+            minLength={8}
+            type={showPassword ? "text" : "password"}
+            autoComplete="new-password"
+            className={`${styles.input} pr-16`}
+            placeholder="At least 8 characters"
+            value={registration.password}
+            onChange={(event) => editRegistration("password", event.target.value)}
+          />
+          <button
+            type="button"
+            onClick={() => setShowPassword((value) => !value)}
+            className={`absolute top-1/2 -translate-y-1/2 ${styles.toggle}`}
+          >
+            {showPassword ? "Hide" : "Show"}
+          </button>
+        </div>
+      </label>
+      <label className={styles.label}>
+        Referral code <span className="text-[var(--muted-foreground)]">(optional)</span>
+        <input
+          autoComplete="off"
+          className={`mt-1.5 ${styles.input} uppercase placeholder:normal-case`}
+          placeholder="A friend's code"
+          value={registration.referralCode}
+          onChange={(event) => editRegistration("referralCode", event.target.value)}
+        />
+      </label>
+      {error && (
+        <p role="alert" className="text-sm text-red-400">
+          {error}
+        </p>
+      )}
+      <button type="submit" disabled={submitting} className={styles.submit}>
+        {submitting ? "Creating account…" : "Create account"}
+      </button>
+    </form>
+  );
+
+  const canRegister = role === "customer" && !!onRegister;
 
   /** The theme switch, pinned to the same top-right corner of the screen on both login pages. */
   const themeCorner = (
@@ -192,12 +335,28 @@ export function LoginPage({ role = "customer", onLogin, onBrowse }: Props) {
         <main className="flex items-center justify-center p-5 sm:p-10">
           <div className="animate-page-enter w-full max-w-md">
             <div className="mb-5 sm:mb-7">
-              <h2 className="font-display text-2xl font-semibold">Customer sign in</h2>
+              <h2 className="font-display text-2xl font-semibold">
+                {registering ? "Create your account" : "Customer sign in"}
+              </h2>
               <p className="mt-1 text-sm text-[var(--muted-foreground)]">
-                Sign in with your KhmerShop account.
+                {registering
+                  ? "Join KhmerShop to earn points on every order."
+                  : "Sign in with your KhmerShop account."}
               </p>
             </div>
-            {form}
+            {registering && canRegister ? registerForm : form}
+            {canRegister && (
+              <p className="mt-4 text-center text-sm text-[var(--muted-foreground)]">
+                {registering ? "Already have an account?" : "New to KhmerShop?"}{" "}
+                <button
+                  type="button"
+                  onClick={() => switchMode(!registering)}
+                  className="font-semibold text-[var(--gold-mid)] hover:underline"
+                >
+                  {registering ? "Sign in" : "Create an account"}
+                </button>
+              </p>
+            )}
             <button type="button" onClick={onBrowse} className="mt-3 w-full py-2 text-sm text-[var(--gold-mid)] hover:underline">
               Continue browsing the shop
             </button>

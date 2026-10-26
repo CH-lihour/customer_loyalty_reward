@@ -1780,17 +1780,19 @@ export function ShopProvider({ children }: { children: ReactNode }) {
           const user: Customer = {
             id,
             name: profile.name,
-            nameKh: "",
+            nameKh: profile.name_kh ?? "",
             email,
             phone: profile.phone ?? "",
-            province: "",
+            province: profile.province ?? "",
             avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(profile.name)}&background=262a36&color=e8a634`,
             tier: tierFor(points, s.tiers),
             points,
             totalSpent: 0,
             joinedAt: date(),
             lastOrder: "",
-            referralCode: `KHMER-${profile.name.trim().split(" ")[0].toUpperCase()}-${String(profile.id).padStart(4, "0")}`,
+            referralCode:
+              profile.referral_code ??
+              `KHMER-${profile.name.trim().split(" ")[0].toUpperCase()}-${String(profile.id).padStart(4, "0")}`,
             badges: [],
             ordersCount: 0,
           };

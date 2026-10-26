@@ -32,6 +32,7 @@ const blankCategory = (): ProductCategory => ({
   nameKh: "",
   description: "",
   active: true,
+  parentId: "",
 });
 
 export function AdminCategoriesPage({
@@ -74,6 +75,38 @@ export function AdminCategoriesPage({
       ? productCount(original.name)
       : 0;
 
+  /** "Drinks › Coffee": the category's name after its ancestors' names. */
+  const categoryPath = (id: string) => {
+    const names: string[] = [];
+    const seen = new Set<string>();
+    let current = shop.categories.find((c) => c.id === id);
+    while (current && !seen.has(current.id)) {
+      seen.add(current.id);
+      names.unshift(current.name);
+      current = shop.categories.find((c) => c.id === current?.parentId);
+    }
+    return names.join(" › ");
+  };
+  /** The category and everything beneath it, none of which can become its parent. */
+  const withDescendants = (id: string) => {
+    const ids = new Set([id]);
+    for (let grew = true; grew; ) {
+      grew = false;
+      for (const c of shop.categories) {
+        if (c.parentId && ids.has(c.parentId) && !ids.has(c.id)) {
+          ids.add(c.id);
+          grew = true;
+        }
+      }
+    }
+    return ids;
+  };
+  const blockedParents = editing?.id ? withDescendants(editing.id) : new Set<string>();
+  const parentChoices = shop.categories
+    .filter((c) => !blockedParents.has(c.id))
+    .map((c) => ({ id: c.id, label: categoryPath(c.id), active: c.active }))
+    .sort((a, b) => a.label.localeCompare(b.label));
+
   const open = (category: ProductCategory) => {
     setError("");
     setEditing(category);
@@ -86,6 +119,10 @@ export function AdminCategoriesPage({
       ? `Created category ${name}`
       : original.name !== name
         ? `Renamed category ${original.name} to ${name}`
+        : (original.parentId ?? "") !== (editing.parentId ?? "")
+          ? editing.parentId
+            ? `Moved category ${name} under ${categoryPath(editing.parentId)}`
+            : `Moved category ${name} to the top level`
         : original.active !== editing.active
           ? `${editing.active ? "Activated" : "Deactivated"} category ${name}`
           : `Updated category ${name}`;
@@ -190,6 +227,7 @@ export function AdminCategoriesPage({
             <thead className={theadClass}>
               <tr>
                 <th className="p-3">Category</th>
+                <th className="p-3">Parent</th>
                 <th className="p-3">Description</th>
                 <th className="p-3 text-right">Products</th>
                 <th className="p-3">Status</th>
@@ -204,6 +242,9 @@ export function AdminCategoriesPage({
                     <div className="text-xs font-normal text-[var(--muted-foreground)]">
                       {c.nameKh}
                     </div>
+                  </td>
+                  <td className="p-3 text-xs text-[var(--muted-foreground)]">
+                    {c.parentId ? categoryPath(c.parentId) || "—" : "—"}
                   </td>
                   <td className="p-3 text-xs text-[var(--muted-foreground)]">
                     {c.description || "—"}
@@ -242,7 +283,7 @@ export function AdminCategoriesPage({
                 </tr>
               ))}
               {!table.rows.length && (
-                <EmptyRow colSpan={5}>
+                <EmptyRow colSpan={6}>
                   {table.loading
                     ? "Loading categories…"
                     : term
@@ -285,6 +326,24 @@ export function AdminCategoriesPage({
                     setEditing({ ...editing, nameKh: e.target.value })
                   }
                 />
+              </label>
+              <label className="text-xs sm:col-span-2">
+                Parent category
+                <select
+                  className={field}
+                  value={editing.parentId ?? ""}
+                  onChange={(e) =>
+                    setEditing({ ...editing, parentId: e.target.value })
+                  }
+                >
+                  <option value="">None (top-level category)</option>
+                  {parentChoices.map((choice) => (
+                    <option key={choice.id} value={choice.id}>
+                      {choice.label}
+                      {choice.active ? "" : " (inactive)"}
+                    </option>
+                  ))}
+                </select>
               </label>
               <label className="text-xs sm:col-span-2">
                 Description

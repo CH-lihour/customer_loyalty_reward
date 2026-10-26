@@ -1,133 +1,14 @@
-import { useEffect, useState } from "react";
-import { createPortal } from "react-dom";
-import type { Product } from "../../data/mockData";
+import { useState } from "react";
 import { useShop } from "../../data/shop";
-import { modalExitDelay, useModalState } from "../../components/useModalState";
-import { ImagePreviewDialog } from "../../components/ImagePreviewDialog";
-import { ProductCover, ProductGallery } from "../../components/ProductImage";
+import { ProductCover } from "../../components/ProductImage";
 
 interface Props {
   onAddToCart: (productId: string) => void;
+  onViewProduct: (productId: string) => void;
   guest?: boolean;
 }
 
-function ProductDetail({
-  product,
-  money,
-  onClose,
-  onAddToCart,
-  guest,
-  closing,
-}: {
-  product: Product;
-  money: (amount: number) => string;
-  onClose: () => void;
-  onAddToCart: (productId: string) => void;
-  guest: boolean;
-  closing: boolean;
-}) {
-  // The index of the image open in the full-size preview, or null when it is closed.
-  const [previewIndex, setPreviewIndex, imageClosing] = useModalState<number | null>(null);
-  const imageOpen = previewIndex !== null;
-  useEffect(() => {
-    const previousOverflow = document.documentElement.style.overflow;
-    document.documentElement.style.overflow = "hidden";
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !imageOpen) onClose();
-    };
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.documentElement.style.overflow = previousOverflow;
-      document.removeEventListener("keydown", onKeyDown);
-    };
-  }, [onClose, imageOpen]);
-
-  return createPortal(
-    <div
-      role="presentation"
-      className={`fixed inset-0 z-[100] grid place-items-center bg-black/75 p-4 backdrop-blur-sm ${closing ? "modal-backdrop-leaving" : ""}`}
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onClose();
-      }}
-    >
-      <section
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="product-detail-title"
-        className="product-dialog"
-      >
-        <div className="relative">
-          <ProductGallery
-            images={product.images}
-            name={product.name}
-            onOpen={setPreviewIndex}
-            className={product.images.length > 1 ? "h-72 pb-1 sm:h-80" : "h-52 sm:h-64"}
-          />
-          <button
-            type="button"
-            autoFocus
-            onClick={onClose}
-            aria-label="Close product details"
-            className="absolute right-3 top-3 rounded-full bg-[var(--background)]/90 px-3 py-1 text-xl"
-          >
-            ×
-          </button>
-        </div>
-        <div className="space-y-3 p-5 sm:p-6">
-          <div>
-            <p className="text-xs text-[var(--gold-mid)]">{product.category}</p>
-            <h2
-              id="product-detail-title"
-              className="font-display text-xl font-semibold"
-            >
-              {product.name}
-            </h2>
-            <p className="text-sm text-[var(--muted-foreground)]">
-              {product.nameKh}
-            </p>
-          </div>
-          <p className="text-sm leading-relaxed">{product.description}</p>
-          <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
-            <strong className="text-xl text-[var(--gold-mid)]">
-              {money(product.price)}
-            </strong>
-            <span className="text-[var(--muted-foreground)]">
-              {product.stock} in stock · +{product.normalPoints} base pts ·{" "}
-              {product.bonusMultiplier}× bonus
-            </span>
-          </div>
-          <button
-            type="button"
-            disabled={product.stock < 1}
-            onClick={() => {
-              onClose();
-              setTimeout(() => onAddToCart(product.id), modalExitDelay());
-            }}
-            className="w-full rounded-lg bg-[var(--gold-mid)] py-2 font-semibold text-[var(--background)] disabled:opacity-40"
-          >
-            {product.stock < 1
-              ? "Out of Stock"
-              : guest
-                ? "Sign in to add"
-                : "Add to Cart"}
-          </button>
-        </div>
-      </section>
-      {previewIndex !== null && (
-        <ImagePreviewDialog
-          images={product.images.map((image) => image.url)}
-          startIndex={previewIndex}
-          name={product.name}
-          onClose={() => setPreviewIndex(null)}
-          closing={imageClosing}
-        />
-      )}
-    </div>,
-    document.body,
-  );
-}
-
-export function ProductsPage({ onAddToCart, guest = false }: Props) {
+export function ProductsPage({ onAddToCart, onViewProduct, guest = false }: Props) {
   const {
     storefrontProducts: products,
     categories: categoryList,
@@ -139,10 +20,6 @@ export function ProductsPage({ onAddToCart, guest = false }: Props) {
   ];
   const [activeCategory, setActiveCategory] = useState("All");
   const [search, setSearch] = useState("");
-  const [selectedId, setSelectedId, detailClosing] = useModalState<
-    string | null
-  >(null);
-  const selected = products.find((p) => p.id === selectedId);
   const filtered = products.filter((product) => {
     const matchesCategory =
       activeCategory === "All" || product.category === activeCategory;
@@ -190,7 +67,7 @@ export function ProductsPage({ onAddToCart, guest = false }: Props) {
             <button
               type="button"
               aria-label={`View details for ${product.name}`}
-              onClick={() => setSelectedId(product.id)}
+              onClick={() => onViewProduct(product.id)}
               className="relative block h-44 w-full overflow-hidden bg-[var(--secondary)] text-left"
             >
               <ProductCover
@@ -220,7 +97,7 @@ export function ProductsPage({ onAddToCart, guest = false }: Props) {
               </p>
               <button
                 type="button"
-                onClick={() => setSelectedId(product.id)}
+                onClick={() => onViewProduct(product.id)}
                 className="text-left font-medium leading-snug hover:text-[var(--gold-mid)]"
               >
                 {product.name}
@@ -242,7 +119,7 @@ export function ProductsPage({ onAddToCart, guest = false }: Props) {
               <div className="mt-3 grid grid-cols-2 gap-2">
                 <button
                   type="button"
-                  onClick={() => setSelectedId(product.id)}
+                  onClick={() => onViewProduct(product.id)}
                   className="rounded-lg border border-[var(--border)] py-2 text-xs font-semibold"
                 >
                   Details
@@ -269,16 +146,6 @@ export function ProductsPage({ onAddToCart, guest = false }: Props) {
         <div className="py-16 text-center text-sm text-[var(--muted-foreground)]">
           No products match your search.
         </div>
-      )}
-      {selected && (
-        <ProductDetail
-          product={selected}
-          money={money}
-          onClose={() => setSelectedId(null)}
-          onAddToCart={onAddToCart}
-          guest={guest}
-          closing={detailClosing}
-        />
       )}
     </div>
   );
