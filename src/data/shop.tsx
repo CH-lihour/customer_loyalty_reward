@@ -30,6 +30,7 @@ import {
   type Tier,
 } from "./mockData";
 import { extraCustomers, extraProducts } from "./seedExtras";
+import { meetsTier, tierFor, tierRule, type TierTable } from "./tiers";
 import type { ApiProfile, ApiRole } from "./api";
 import {
   adminPages,
@@ -283,12 +284,29 @@ function restoreProducts(parsed: Partial<State>): Product[] {
     return { ...product, images: legacy ? [{ url: legacy }] : [] };
   });
 }
+/**
+ * Keeps saved tiers that are well formed, or the demo tiers when none are. JSON stores an open-ended
+ * tier's Infinity maximum as null, so a missing maximum becomes Infinity again.
+ */
+function restoreTiers(saved: unknown): TierTable {
+  if (!saved || typeof saved !== "object") return initial.tiers;
+  const tiers: TierTable = {};
+  for (const [name, rule] of Object.entries(saved as Record<string, Partial<TierRule>>)) {
+    if (!rule || typeof rule.min !== "number" || typeof rule.multiplier !== "number") continue;
+    tiers[name] = {
+      min: rule.min,
+      max: typeof rule.max === "number" ? rule.max : Infinity,
+      multiplier: rule.multiplier,
+      color: typeof rule.color === "string" ? rule.color : "#94a3b8",
+    };
+  }
+  return Object.keys(tiers).length ? tiers : initial.tiers;
+}
 function restoreState(saved: string | null): State {
   if (!saved) return initial;
   try {
     const parsed = JSON.parse(saved) as Partial<State>;
-    const tiers = { ...initial.tiers, ...parsed.tiers };
-    tiers.Platinum = { ...tiers.Platinum, max: Infinity };
+    const tiers = restoreTiers(parsed.tiers);
     const roleLabels = { ...defaultAdminRoleLabels };
     for (const [id, label] of Object.entries(parsed.roleLabels ?? {})) {
       if (id.startsWith("role-") && typeof label === "string" && label.trim())
@@ -327,12 +345,33 @@ const uid = () =>
 const now = () => new Date().toISOString();
 const date = () => now().slice(0, 10);
 const stamp = () => now().replace("T", " ").slice(0, 16);
-const tierFor = (points: number, tiers: State["tiers"]): Tier =>
-  points >= tiers.Platinum.min
-    ? "Platinum"
-    : points >= tiers.Gold.min
-      ? "Gold"
-      : "Silver";
+/**
+ * Puts every customer in the tier their qualifying points reach under `tiers`, keeping admin overrides
+ * that still name a tier, and records each change in the tier history.
+ */
+const withTiers = (s: State, tiers: TierTable, reason: string): State => {
+  const customers = s.customers.map((c) => {
+    const override = s.tierOverrides[c.id];
+    return {
+      ...c,
+      tier:
+        override && tiers[override]
+          ? override
+          : tierFor(s.qualifyingPoints[c.id] ?? c.points, tiers),
+    };
+  });
+  const changes = customers
+    .filter((c, i) => c.tier !== s.customers[i].tier)
+    .map((c) => ({
+      id: uid(),
+      userId: c.id,
+      from: s.customers.find((old) => old.id === c.id)!.tier,
+      to: c.tier,
+      reason,
+      createdAt: date(),
+    }));
+  return { ...s, tiers, customers, tierHistory: [...changes, ...s.tierHistory] };
+};
 const log = (
   s: State,
   user: Customer,
@@ -676,7 +715,8 @@ type Shop = State & {
   logStaffAction: (actorId: string, event: string, description: string) => void;
   saveReward: (reward: Reward) => void;
   deleteReward: (id: string) => string | null;
-  saveTier: (tier: Tier, rule: TierRule) => void;
+  /** Replaces every tier with the ones loaded from the API, recalculating customers' tiers when they changed. */
+  syncTiers: (tiers: TierTable) => void;
   overrideTier: (
     userId: string,
     tier: Tier | undefined,
@@ -996,7 +1036,7 @@ export function ShopProvider({ children }: { children: ReactNode }) {
                 .map((c) => c.multiplier),
             );
             const earned = Math.floor(
-              base * s.tiers[user.tier].multiplier * campaignMultiplier,
+              base * tierRule(s.tiers, user.tier).multiplier * campaignMultiplier,
             );
             next.orders = next.orders.map((o) =>
               o.id === id ? { ...o, pointsEarned: earned } : o,
@@ -1122,7 +1162,7 @@ export function ShopProvider({ children }: { children: ReactNode }) {
           if (s.redemptions.some((r) => r.userId === user.id && r.rewardId === id && openRedemptionStatuses.includes(r.status)))
             return "You already redeemed this reward.";
           if (user.points < reward.pointsCost) return "Insufficient points.";
-          if (s.tiers[user.tier].min < s.tiers[reward.minTier].min)
+          if (!meetsTier(s.tiers, user.tier, reward.minTier))
             return `Requires ${reward.minTier} tier.`;
           // Reserve from the location holding the most redeemable stock. Points and stock change in one update.
           const levels = computeLevels(s.stockMovements);
@@ -1595,32 +1635,12 @@ export function ShopProvider({ children }: { children: ReactNode }) {
             restockRequests: s.restockRequests.filter((r) => r.rewardId !== id),
           };
         }),
-      saveTier: (tier, rule) =>
-        setState((s) => {
-          const tiers = { ...s.tiers, [tier]: rule };
-          const updated = s.customers.map((c) => ({
-            ...c,
-            tier:
-              s.tierOverrides[c.id] ??
-              tierFor(s.qualifyingPoints[c.id] ?? c.points, tiers),
-          }));
-          const changes = updated
-            .filter((c, i) => c.tier !== s.customers[i].tier)
-            .map((c, i) => ({
-              id: uid(),
-              userId: c.id,
-              from: s.customers.find((old) => old.id === c.id)!.tier,
-              to: c.tier,
-              reason: "Tier rule updated",
-              createdAt: date(),
-            }));
-          return {
-            ...s,
-            tiers,
-            customers: updated,
-            tierHistory: [...changes, ...s.tierHistory],
-          };
-        }),
+      syncTiers: (tiers) =>
+        setState((s) =>
+          JSON.stringify(tiers) === JSON.stringify(s.tiers)
+            ? s
+            : withTiers(s, tiers, "Tier rule updated"),
+        ),
       overrideTier: (userId, tier, reason) =>
         setState((s) => {
           const user = s.customers.find((c) => c.id === userId);
@@ -1716,7 +1736,7 @@ export function ShopProvider({ children }: { children: ReactNode }) {
           phone: fields.phone.trim(),
           province: fields.province,
           avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(fields.name)}&background=262a36&color=e8a634`,
-          tier: "Silver",
+          tier: tierFor(0, state.tiers),
           points: 0,
           totalSpent: 0,
           joinedAt: date(),

@@ -1,4 +1,5 @@
-﻿export type Tier = "Silver" | "Gold" | "Platinum";
+﻿/** A membership tier's name. Tiers are managed in the admin, so any name can appear. */
+export type Tier = string;
 export type OrderStatus =
   | "PENDING"
   | "CONFIRMED"
@@ -800,7 +801,8 @@ export const badges: Badge[] = [
   },
 ];
 
-export const tierConfig = {
+/** The demo tiers, used until the API's tiers load. */
+export const tierConfig: Record<Tier, { min: number; max: number; multiplier: number; color: string }> = {
   Silver: { min: 0, max: 999, multiplier: 1, color: "#94a3b8" },
   Gold: { min: 1000, max: 4999, multiplier: 1.5, color: "#e8a634" },
   Platinum: { min: 5000, max: Infinity, multiplier: 2, color: "#a78bfa" },

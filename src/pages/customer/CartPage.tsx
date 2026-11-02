@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useShop } from "../../data/shop";
+import { tierRule } from "../../data/tiers";
 import { useFeedback } from "../../components/FeedbackProvider";
 import { ProductCover } from "../../components/ProductImage";
 import { Icon } from "../../components/Icon";
@@ -29,7 +30,7 @@ export function CartPage({
     (sum, item) => sum + item.product!.price * item.qty,
     0,
   );
-  const multiplier = guest ? 1 : shop.tiers[shop.currentUser.tier].multiplier;
+  const multiplier = guest ? 1 : tierRule(shop.tiers, shop.currentUser.tier).multiplier;
   const today = new Date().toISOString().slice(0, 10);
   const campaignMultiplier = Math.max(
     1,

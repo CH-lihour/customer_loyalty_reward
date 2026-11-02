@@ -1,18 +1,13 @@
 import { useShop } from "../../data/shop";
 import { TierBadge } from "../../components/TierBadge";
-import { type Tier } from "../../data/mockData";
+import { nextTier, tierOrder, tierRule } from "../../data/tiers";
 
 export function TierPage() {
   const { currentUser, tiers, qualifyingPoints, tierOverrides, tierHistory } =
     useShop();
   const progress = qualifyingPoints[currentUser.id] ?? currentUser.points;
-  const names: Tier[] = ["Silver", "Gold", "Platinum"];
-  const next =
-    currentUser.tier === "Silver"
-      ? "Gold"
-      : currentUser.tier === "Gold"
-        ? "Platinum"
-        : null;
+  const names = tierOrder(tiers);
+  const next = nextTier(currentUser.tier, tiers);
   const percent = next
     ? Math.min(100, Math.max(0, (progress / tiers[next].min) * 100))
     : 100;
@@ -28,7 +23,7 @@ export function TierPage() {
         <div className="flex items-center gap-3">
           <TierBadge tier={currentUser.tier} size="lg" />
           <span className="text-sm">
-            {tiers[currentUser.tier].multiplier}× points on purchases
+            {tierRule(tiers, currentUser.tier).multiplier}× points on purchases
           </span>
         </div>
         <p className="mt-4 text-sm">

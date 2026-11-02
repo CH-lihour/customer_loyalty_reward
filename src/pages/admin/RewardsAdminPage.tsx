@@ -2,20 +2,21 @@ import { useState, type FormEvent } from "react"
 import { type Reward, type Tier } from "../../data/mockData"
 import { useShop } from "../../data/shop"
 import { useFeedback } from "../../components/FeedbackProvider"
+import { tierOrder } from "../../data/tiers"
 import { TierBadge } from "../../components/TierBadge"
 import { AdminModal } from "../../components/AdminModal"
 import { useModalState } from "../../components/useModalState"
 import { ActionIconButton } from "../../components/ActionIconButton"
 import { ImagePreviewDialog } from "../../components/ImagePreviewDialog"
 
-const blank = (): Reward => ({
+const blank = (minTier: Tier): Reward => ({
   id: "",
   name: "",
   nameKh: "",
   description: "",
   pointsCost: 100,
   stock: 0,
-  minTier: "Silver",
+  minTier,
   active: true,
   category: "Discount",
   image: "",
@@ -23,7 +24,7 @@ const blank = (): Reward => ({
 const field =
   "w-full rounded-lg border border-[var(--border)] bg-[var(--secondary)] px-3 py-2"
 export function AdminRewardsPage() {
-  const { rewards, saveReward, deleteReward, availableFor, stockItemFor } = useShop()
+  const { rewards, tiers, saveReward, deleteReward, availableFor, stockItemFor } = useShop()
   const { notify, confirm } = useFeedback()
   const [editing, setEditing, modalClosing] = useModalState<Reward | null>(null)
   const [previewId, setPreviewId, previewClosing] = useModalState<string | null>(null)
@@ -53,7 +54,7 @@ export function AdminRewardsPage() {
       <div className="flex items-center justify-between">
         <h1 className="font-display text-2xl font-semibold">Rewards Catalog</h1>
         <button
-          onClick={() => setEditing(blank())}
+          onClick={() => setEditing(blank(tierOrder(tiers)[0] ?? ""))}
           className="rounded-lg bg-[var(--gold-mid)] px-4 py-2 text-sm font-semibold text-[var(--background)]"
         >
           + Add Reward
@@ -117,7 +118,7 @@ export function AdminRewardsPage() {
                   value={editing.minTier}
                   onChange={(e) => change("minTier", e.target.value as Tier)}
                 >
-                  {(["Silver", "Gold", "Platinum"] as const).map((t) => (
+                  {[...new Set([...tierOrder(tiers), editing.minTier])].map((t) => (
                     <option key={t}>{t}</option>
                   ))}
                 </select>

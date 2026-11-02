@@ -114,7 +114,7 @@ export function AdminUsersPage({ actorId, token }: { actorId: string; token: str
     <p className="text-xs text-[var(--muted-foreground)]">Staff sign in with the email and password set here. Disabling an account signs it out everywhere.</p>
     <section className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div><h2 className="font-display text-xl font-semibold">Customer users</h2><p className="text-xs text-[var(--muted-foreground)]">Customer is a storefront role. Silver, Gold, and Platinum are membership tiers.</p></div>
+        <div><h2 className="font-display text-xl font-semibold">Customer users</h2><p className="text-xs text-[var(--muted-foreground)]">Customer is a storefront role. Membership tiers are managed under Tiers.</p></div>
         <input type="search" aria-label="Search customer users" placeholder="Search customers" value={customerSearch} onChange={(event) => setCustomerSearch(event.target.value)} className="rounded-lg border border-[var(--border)] bg-[var(--card)] px-3 py-2 text-sm" />
       </div>
       <div className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)]">

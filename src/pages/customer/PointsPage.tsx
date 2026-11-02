@@ -1,5 +1,5 @@
 ﻿import { useShop } from "../../data/shop";
-import type { Tier } from "../../data/mockData";
+import { nextTier as nextTierOf, tierRule } from "../../data/tiers";
 import { Icon } from "../../components/Icon";
 
 const typeColors: Record<string, string> = {
@@ -27,10 +27,9 @@ export function PointsPage() {
     money,
   } = useShop();
   const tier = CURRENT_USER.tier;
-  const config = tierConfig[tier];
-  const nextTier =
-    tier === "Silver" ? "Gold" : tier === "Gold" ? "Platinum" : null;
-  const nextConfig = nextTier ? tierConfig[nextTier as Tier] : null;
+  const config = tierRule(tierConfig, tier);
+  const nextTier = nextTierOf(tier, tierConfig);
+  const nextConfig = nextTier ? tierConfig[nextTier] : null;
   const qualifying = qualifyingPoints[CURRENT_USER.id] ?? CURRENT_USER.points;
   const progress = nextConfig
     ? Math.min(

@@ -1,24 +1,20 @@
 ﻿import type { Tier } from "../data/mockData";
+import { useShop } from "../data/shop";
+import { nextTier, tierRule } from "../data/tiers";
 import { Icon } from "./Icon";
-
-const icons: Record<Tier, string> = {
-  Silver: "medal",
-  Gold: "medal",
-  Platinum: "gem",
-};
-const labels: Record<Tier, string> = {
-  Silver: "Silver",
-  Gold: "Gold",
-  Platinum: "Platinum",
-};
 
 export function TierBadge({
   tier,
   size = "sm",
+  color,
 }: {
   tier: Tier;
   size?: "sm" | "md" | "lg";
+  /** Overrides the tier's stored color, e.g. to preview an unsaved edit. */
+  color?: string;
 }) {
+  const { tiers } = useShop();
+  const tint = color ?? tierRule(tiers, tier).color;
   const pad =
     size === "lg"
       ? "px-4 py-1.5 text-sm"
@@ -27,9 +23,16 @@ export function TierBadge({
         : "px-2 py-0.5 text-xs";
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded-full font-semibold tier-badge-${tier.toLowerCase()} ${pad}`}
+      className={`inline-flex items-center gap-1 rounded-full border font-semibold text-[var(--foreground)] ${pad}`}
+      style={{ backgroundColor: `${tint}33`, borderColor: `${tint}99` }}
     >
-      <Icon name={icons[tier]} className="h-3.5 w-3.5" /> {labels[tier]}
+      <span className="inline-flex" style={{ color: tint }}>
+        <Icon
+          name={tiers[tier] && !nextTier(tier, tiers) ? "gem" : "medal"}
+          className="h-3.5 w-3.5"
+        />
+      </span>{" "}
+      {tier}
     </span>
   );
 }

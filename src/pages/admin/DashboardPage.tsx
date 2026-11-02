@@ -45,11 +45,7 @@ export function AdminDashboardPage() {
     },
   ];
 
-  const tierDist = [
-    { tier: "Silver" as const, count: analytics.silverCustomers },
-    { tier: "Gold" as const, count: analytics.goldCustomers },
-    { tier: "Platinum" as const, count: analytics.platinumCustomers },
-  ];
+  const tierDist = analytics.tierCounts;
 
   const recentOrders = orders.slice(0, 5);
 

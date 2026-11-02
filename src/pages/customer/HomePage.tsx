@@ -1,5 +1,5 @@
-﻿import type { Tier } from "../../data/mockData";
-import { useShop } from "../../data/shop";
+﻿import { useShop } from "../../data/shop";
+import { meetsTier, nextTier as nextTierOf, tierRule } from "../../data/tiers";
 import { TierBadge } from "../../components/TierBadge";
 import { ProductCover } from "../../components/ProductImage";
 import { Icon } from "../../components/Icon";
@@ -31,10 +31,9 @@ export function HomePage({
     stockItemFor,
   } = useShop();
   const tier = CURRENT_USER.tier;
-  const config = tierConfig[tier];
-  const nextTier =
-    tier === "Silver" ? "Gold" : tier === "Gold" ? "Platinum" : null;
-  const nextConfig = nextTier ? tierConfig[nextTier as Tier] : null;
+  const config = tierRule(tierConfig, tier);
+  const nextTier = nextTierOf(tier, tierConfig);
+  const nextConfig = nextTier ? tierConfig[nextTier] : null;
   const qualifying = qualifyingPoints[CURRENT_USER.id] ?? CURRENT_USER.points;
   const progress = nextConfig
     ? Math.min(
@@ -243,7 +242,7 @@ export function HomePage({
                   (availableFor(r.id) > 0 ||
                     stockItemFor(r.id).allowBackorder) &&
                   r.pointsCost <= CURRENT_USER.points &&
-                  tierConfig[r.minTier].min <= tierConfig[tier].min,
+                  meetsTier(tierConfig, tier, r.minTier),
               )
               .length.toString(),
             icon: "gift",
@@ -386,46 +385,13 @@ export function HomePage({
           Your {tier} Benefits
         </h3>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
-          {tier === "Silver" &&
-            [
-              { icon: "star", text: "1× points on all purchases" },
-              { icon: "gift", text: "Basic reward catalog access" },
-              { icon: "cart", text: "Standard checkout perks" },
-            ].map((b) => (
-              <div
-                key={b.text}
-                className="flex items-center gap-2 text-[var(--muted-foreground)]"
-              >
-                <Icon
-                  name={b.icon}
-                  className="h-4 w-4 shrink-0 text-[var(--gold-mid)]"
-                />
-                {b.text}
-              </div>
-            ))}
-          {tier === "Gold" &&
-            [
-              { icon: "star", text: "1.5× points on all purchases" },
-              { icon: "gift", text: "Gold reward catalog access" },
-              { icon: "tag", text: "Gold-exclusive promotions" },
-            ].map((b) => (
-              <div
-                key={b.text}
-                className="flex items-center gap-2 text-[var(--muted-foreground)]"
-              >
-                <Icon
-                  name={b.icon}
-                  className="h-4 w-4 shrink-0 text-[var(--gold-mid)]"
-                />
-                {b.text}
-              </div>
-            ))}
-          {tier === "Platinum" &&
-            [
-              { icon: "star", text: "2× points on all purchases" },
-              { icon: "gem", text: "Platinum-exclusive rewards" },
-              { icon: "rocket", text: "Priority support & promotions" },
-            ].map((b) => (
+          {[
+            { icon: "star", text: `${config.multiplier}× points on all purchases` },
+            { icon: "gift", text: `${tier} reward catalog access` },
+            nextTier
+              ? { icon: "tag", text: `${nextTier} unlocks ${nextConfig!.multiplier}× points` }
+              : { icon: "gem", text: "Our highest tier's exclusive rewards" },
+          ].map((b) => (
               <div
                 key={b.text}
                 className="flex items-center gap-2 text-[var(--muted-foreground)]"

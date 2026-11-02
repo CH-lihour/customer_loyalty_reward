@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useShop } from "../../data/shop";
+import { meetsTier } from "../../data/tiers";
 import { TierBadge } from "../../components/TierBadge";
 import { useFeedback } from "../../components/FeedbackProvider";
 import { ImagePreviewDialog } from "../../components/ImagePreviewDialog";
@@ -33,7 +34,7 @@ export function RewardsPage() {
     const item = shop.stockItemFor(r.id);
     const available = shop.availableFor(r.id, variantId);
     const stocked = available > 0 || item.allowBackorder;
-    const tierOk = shop.tiers[user.tier].min >= shop.tiers[r.minTier].min;
+    const tierOk = meetsTier(shop.tiers, user.tier, r.minTier);
     const blocker = alreadyRedeemed(r.id) ? "Already Redeemed"
       : !tierOk ? `Requires ${r.minTier}`
         : user.points < r.pointsCost ? "Insufficient Points"

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useShop } from "./data/shop";
+import { useApiTiers } from "./data/tierSync";
 import { useFeedback } from "./components/FeedbackProvider";
 import { LoginPage, type LoginRole } from "./components/LoginPage";
 import { CustomerLayout } from "./components/CustomerLayout";
@@ -175,6 +176,12 @@ export default function App() {
   const allowedAdminPages = adminUser
     ? (shop.rolePermissions[adminUser.role] ?? noAdminPages)
     : noAdminPages;
+  // Staff who manage tiers load them once signed in, so tier rules everywhere follow the API.
+  useApiTiers(
+    session?.role === "admin" && allowedAdminPages.includes("tiers")
+      ? session.token
+      : null,
+  );
 
   const navigate = (next: Route, replace = false) => {
     const path = routePath(next);
@@ -516,7 +523,9 @@ export default function App() {
         )}
         {adminPage === "orders" && <AdminOrdersPage />}
         {adminPage === "points" && <AdminPointsPage />}
-        {adminPage === "tiers" && <AdminTiersPage />}
+        {adminPage === "tiers" && (
+          <AdminTiersPage actorId={adminUser.id} token={session.token} />
+        )}
         {adminPage === "campaigns" && <AdminCampaignsPage />}
         {adminPage === "rewards" && <AdminRewardsPage />}
         {adminPage === "badges" && <AdminBadgesPage />}

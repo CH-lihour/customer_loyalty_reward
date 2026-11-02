@@ -2,6 +2,7 @@ import { useState } from "react"
 import { useShop } from "../../data/shop"
 import { useFeedback } from "../../components/FeedbackProvider"
 import type { Tier } from "../../data/mockData"
+import { tierOrder } from "../../data/tiers"
 import { TierBadge } from "../../components/TierBadge"
 import { AdminModal } from "../../components/AdminModal"
 import { useModalState } from "../../components/useModalState"
@@ -20,7 +21,7 @@ const riskLabel = (lastOrder: string) => {
 }
 
 export function AdminCustomersPage() {
-  const { customers, tierOverrides, overrideTier } = useShop()
+  const { customers, tiers, tierOverrides, overrideTier } = useShop()
   const { notify } = useFeedback()
   const [search, setSearch] = useState("")
   const [tierFilter, setTierFilter] = useState("All")
@@ -59,7 +60,7 @@ export function AdminCustomersPage() {
             onChange={(e) => setSearch(e.target.value)}
             className="px-3 py-1.5 rounded-lg bg-[var(--card)] border border-[var(--border)] text-sm text-[var(--foreground)] placeholder:text-[var(--muted-foreground)] focus:outline-none focus:border-[var(--gold-mid)]/50 w-48"
           />
-          {["All", "Silver", "Gold", "Platinum"].map((t) => (
+          {["All", ...tierOrder(tiers)].map((t) => (
             <button
               key={t}
               onClick={() => setTierFilter(t)}
@@ -182,9 +183,9 @@ export function AdminCustomersPage() {
                 className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--secondary)] px-3 py-2"
               >
                 <option>Auto</option>
-                <option>Silver</option>
-                <option>Gold</option>
-                <option>Platinum</option>
+                {tierOrder(tiers).map((t) => (
+                  <option key={t}>{t}</option>
+                ))}
               </select>
             </label>
             <label className="block text-sm">
