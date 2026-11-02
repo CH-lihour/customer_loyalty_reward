@@ -311,3 +311,58 @@ export async function apiSaveStaffUser(
 ) {
   await request(id ? `/backend/users/${id}` : "/backend/users", { method: id ? "PATCH" : "POST", token, body });
 }
+
+type ApiTier = {
+  id: number;
+  name: string;
+  min_points: number;
+  max_points: number | null;
+  multiplier: string;
+  color: string | null;
+  customers_count: number;
+};
+
+/** A membership tier as the admin shows it. An open-ended tier's `max` is Infinity. */
+export type AdminTier = {
+  id: string;
+  name: string;
+  min: number;
+  max: number;
+  multiplier: number;
+  color: string;
+  customerCount: number;
+};
+
+const toTier = (t: ApiTier): AdminTier => ({
+  id: String(t.id),
+  name: t.name,
+  min: t.min_points,
+  max: t.max_points ?? Infinity,
+  multiplier: Number(t.multiplier),
+  color: t.color ?? "#94a3b8",
+  customerCount: t.customers_count,
+});
+
+/** Loads every tier from the entry tier upwards. */
+export async function apiTiers(token: string): Promise<AdminTier[]> {
+  return (await fetchAll<ApiTier>("/backend/tiers", token)).map(toTier);
+}
+
+/** Creates the tier when it has no id yet; otherwise updates it. */
+export async function apiSaveTier(token: string, tier: Omit<AdminTier, "customerCount">) {
+  await request(tier.id ? `/backend/tiers/${tier.id}` : "/backend/tiers", {
+    method: tier.id ? "PATCH" : "POST",
+    token,
+    body: {
+      name: tier.name,
+      min_points: tier.min,
+      max_points: Number.isFinite(tier.max) ? tier.max : null,
+      multiplier: tier.multiplier,
+      color: tier.color || null,
+    },
+  });
+}
+
+export async function apiDeleteTier(token: string, id: string) {
+  await request(`/backend/tiers/${id}`, { method: "DELETE", token });
+}
