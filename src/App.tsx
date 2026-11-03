@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useShop } from "./data/shop";
 import { useApiTiers } from "./data/tierSync";
+import { useApiBadges } from "./data/badgeSync";
 import { useFeedback } from "./components/FeedbackProvider";
 import { LoginPage, type LoginRole } from "./components/LoginPage";
 import { CustomerLayout } from "./components/CustomerLayout";
@@ -179,6 +180,12 @@ export default function App() {
   // Staff who manage tiers load them once signed in, so tier rules everywhere follow the API.
   useApiTiers(
     session?.role === "admin" && allowedAdminPages.includes("tiers")
+      ? session.token
+      : null,
+  );
+  // Likewise badges, so customers earn and see the badges the admin manages.
+  useApiBadges(
+    session?.role === "admin" && allowedAdminPages.includes("badges")
       ? session.token
       : null,
   );
@@ -528,7 +535,9 @@ export default function App() {
         )}
         {adminPage === "campaigns" && <AdminCampaignsPage />}
         {adminPage === "rewards" && <AdminRewardsPage />}
-        {adminPage === "badges" && <AdminBadgesPage />}
+        {adminPage === "badges" && (
+          <AdminBadgesPage actorId={adminUser.id} token={session.token} />
+        )}
         {adminPage === "referrals" && <AdminReferralsPage />}
         {adminPage === "stock-alerts" && (
           <AdminStockAlertsPage actorId={adminUser.id} onNav={navigateAdmin} />

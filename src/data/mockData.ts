@@ -103,7 +103,8 @@ export interface Badge {
   description: string;
   icon: string;
   color: string;
-  metric?: "orders" | "spend" | "referrals" | "qualifyingPoints";
+  /** What the badge counts. Badges saved before metrics existed have none and are checked by code. */
+  metric?: "orders" | "spend" | "referrals" | "qualifyingPoints" | "membershipDays";
   threshold?: number;
 }
 

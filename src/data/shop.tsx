@@ -416,7 +416,9 @@ const awardBadges = (s: State, userId: string): State => {
             ? referrals
             : b.metric === "qualifyingPoints"
               ? (s.qualifyingPoints[userId] ?? 0)
-              : 0;
+              : b.metric === "membershipDays"
+                ? Math.floor((Date.now() - new Date(user.joinedAt).getTime()) / 86400000)
+                : 0;
     return (
       (b.metric ? value >= (b.threshold ?? Infinity) : checks[b.code]) &&
       !earned.has(b.code)
@@ -722,8 +724,8 @@ type Shop = State & {
     tier: Tier | undefined,
     reason: string,
   ) => void;
-  saveBadge: (badge: Badge) => void;
-  deleteBadge: (id: string) => void;
+  /** Replaces every badge with the ones loaded from the API; customers lose badges that no longer exist. */
+  syncBadges: (badges: Badge[]) => void;
   saveCampaign: (campaign: Campaign) => void;
   deleteCampaign: (id: string) => void;
   updateProfile: (
@@ -1675,18 +1677,20 @@ export function ShopProvider({ children }: { children: ReactNode }) {
             ),
           };
         }),
-      saveBadge: (badge) =>
-        setState((s) => ({
-          ...s,
-          badges: s.badges.some((b) => b.id === badge.id)
-            ? s.badges.map((b) => (b.id === badge.id ? badge : b))
-            : [badge, ...s.badges],
-        })),
-      deleteBadge: (id) =>
-        setState((s) => ({
-          ...s,
-          badges: s.badges.filter((b) => b.id !== id),
-        })),
+      syncBadges: (badges) =>
+        setState((s) => {
+          if (JSON.stringify(badges) === JSON.stringify(s.badges)) return s;
+          const codes = new Set(badges.map((b) => b.code));
+          return {
+            ...s,
+            badges,
+            customers: s.customers.map((c) =>
+              c.badges.every((code) => codes.has(code))
+                ? c
+                : { ...c, badges: c.badges.filter((code) => codes.has(code)) },
+            ),
+          };
+        }),
       saveCampaign: (campaign) =>
         setState((s) => ({
           ...s,

@@ -1,6 +1,8 @@
 ﻿import { useState, type FormEvent } from "react"
 import { type Badge } from "../../data/mockData"
 import { useShop } from "../../data/shop"
+import { apiDeleteBadge, apiSaveBadge, type AdminBadge } from "../../data/api"
+import { useApiBadges } from "../../data/badgeSync"
 import { useFeedback } from "../../components/FeedbackProvider"
 import { AdminModal } from "../../components/AdminModal"
 import { useModalState } from "../../components/useModalState"
@@ -19,20 +21,29 @@ const blank = (): Badge => ({
 })
 const field =
   "w-full rounded-lg border border-[var(--border)] bg-[var(--secondary)] px-3 py-2"
-export function AdminBadgesPage() {
-  const { badges, customers, saveBadge, deleteBadge } = useShop()
+export function AdminBadgesPage({
+  actorId,
+  token,
+}: {
+  actorId: string
+  token: string
+}) {
+  const shop = useShop()
+  const { badges, loading, loadError, reload } = useApiBadges(token)
   const { notify, confirm } = useFeedback()
   const [editing, setEditing, modalClosing] = useModalState<Badge | null>(null)
   const [error, setError] = useState("")
+  const [saving, setSaving] = useState(false)
   const change = <K extends keyof Badge>(key: K, value: Badge[K]) =>
     setEditing((b) => (b ? { ...b, [key]: value } : b))
-  const save = (e: FormEvent) => {
+  const save = async (e: FormEvent) => {
     e.preventDefault()
+    if (!editing || saving) return
     if (
-      !editing ||
       !editing.name.trim() ||
       !editing.code.trim() ||
-      (editing.metric && (!editing.threshold || editing.threshold < 1))
+      !editing.threshold ||
+      editing.threshold < 1
     ) {
       setError("Enter a code, name, and positive threshold.")
       return
@@ -41,22 +52,63 @@ export function AdminBadgesPage() {
       setError("Badge code already exists.")
       return
     }
-    saveBadge({ ...editing, id: editing.id || `b-${Date.now()}` })
-    setEditing(null)
+    setSaving(true)
     setError("")
-    notify("Badge saved.", "success")
+    try {
+      await apiSaveBadge(token, { ...editing, name: editing.name.trim() })
+      await reload()
+      shop.logStaffAction(
+        actorId,
+        editing.id ? "BADGE_UPDATED" : "BADGE_CREATED",
+        `${editing.id ? "Updated" : "Created"} badge ${editing.code}`,
+      )
+      setEditing(null)
+      notify("Badge saved.", "success")
+    } catch (failure) {
+      setError((failure as Error).message)
+      notify((failure as Error).message, "error")
+    } finally {
+      setSaving(false)
+    }
+  }
+  const remove = async (b: AdminBadge) => {
+    const ok = await confirm(
+      b.customerCount
+        ? `Delete ${b.name}? ${b.customerCount} customer${b.customerCount === 1 ? "" : "s"} will lose this badge.`
+        : `Delete ${b.name}?`,
+    )
+    if (!ok) return
+    try {
+      await apiDeleteBadge(token, b.id)
+      await reload()
+      shop.logStaffAction(actorId, "BADGE_DELETED", `Deleted badge ${b.code}`)
+      notify(`${b.name} deleted.`, "success")
+    } catch (failure) {
+      notify((failure as Error).message, "error")
+    }
   }
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
         <h1 className="font-display text-2xl font-semibold">Badges</h1>
         <button
-          onClick={() => setEditing(blank())}
+          onClick={() => {
+            setError("")
+            setEditing(blank())
+          }}
           className="rounded-lg bg-[var(--gold-mid)] px-4 py-2 text-sm font-semibold text-[var(--background)]"
         >
           + Add Badge
         </button>
       </div>
+      {loadError && (
+        <p
+          role="alert"
+          className="rounded-lg border border-red-400/40 p-3 text-sm text-red-400"
+        >
+          Couldn't load badges: {loadError}
+        </p>
+      )}
       {editing && (
         <AdminModal
           closing={modalClosing}
@@ -73,6 +125,7 @@ export function AdminBadgesPage() {
                 Code
                 <input
                   required
+                  maxLength={50}
                   disabled={!!editing.id}
                   className={field}
                   value={editing.code}
@@ -88,6 +141,7 @@ export function AdminBadgesPage() {
                 Name
                 <input
                   required
+                  maxLength={100}
                   className={field}
                   value={editing.name}
                   onChange={(e) => change("name", e.target.value)}
@@ -128,6 +182,7 @@ export function AdminBadgesPage() {
                   <option value="spend">Total spend (USD)</option>
                   <option value="referrals">Successful referrals</option>
                   <option value="qualifyingPoints">Qualifying points</option>
+                  <option value="membershipDays">Days as a member</option>
                 </select>
               </label>
               <label className="text-xs">
@@ -143,6 +198,7 @@ export function AdminBadgesPage() {
               <label className="text-xs sm:col-span-2 lg:col-span-3">
                 Description
                 <input
+                  maxLength={500}
                   className={field}
                   value={editing.description}
                   onChange={(e) => change("description", e.target.value)}
@@ -155,8 +211,11 @@ export function AdminBadgesPage() {
               </p>
             )}
             <div className="flex gap-2">
-              <button className="rounded-lg bg-[var(--gold-mid)] px-4 py-2 text-[var(--background)]">
-                Save Badge
+              <button
+                disabled={saving}
+                className="rounded-lg bg-[var(--gold-mid)] px-4 py-2 text-[var(--background)] disabled:opacity-60"
+              >
+                {saving ? "Saving…" : "Save Badge"}
               </button>
               <button
                 type="button"
@@ -186,59 +245,36 @@ export function AdminBadgesPage() {
                   {b.description}
                 </p>
                 <p className="mt-2 text-xs text-[var(--gold-mid)]">
-                  {customers.filter((c) => c.badges.includes(b.code)).length}{" "}
-                  customers earned this
+                  {b.customerCount} customers earned this
                 </p>
                 <div className="mt-3 flex items-center gap-2 text-sm">
                   <ActionIconButton
                     action="edit"
                     label={`Edit ${b.name}`}
-                    onClick={() =>
+                    onClick={() => {
+                      setError("")
                       setEditing({
                         ...b,
-                        metric:
-                          b.metric ??
-                          (b.code.includes("ORDER") ||
-                          b.code === "FIRST_PURCHASE"
-                            ? "orders"
-                            : b.code === "BIG_SPENDER"
-                              ? "spend"
-                              : b.code === "REFERRAL_CHAMPION"
-                                ? "referrals"
-                                : "qualifyingPoints"),
-                        threshold:
-                          b.threshold ??
-                          (b.code === "TEN_ORDERS"
-                            ? 10
-                            : b.code === "FIVE_ORDERS"
-                              ? 5
-                              : b.code === "BIG_SPENDER"
-                                ? 500
-                                : b.code === "REFERRAL_CHAMPION"
-                                  ? 5
-                                  : b.code === "POINT_COLLECTOR"
-                                    ? 1000
-                                    : 1),
+                        metric: b.metric ?? "orders",
+                        threshold: b.threshold ?? 1,
                       })
-                    }
+                    }}
                   />
                   <ActionIconButton
                     action="delete"
                     label={`Delete ${b.name}`}
-                    onClick={() => {
-                      void confirm(`Delete ${b.name}?`).then((ok) => {
-                        if (ok) {
-                          deleteBadge(b.id)
-                          notify(`${b.name} deleted.`, "success")
-                        }
-                      })
-                    }}
+                    onClick={() => void remove(b)}
                   />
                 </div>
               </div>
             </div>
           </div>
         ))}
+        {!badges.length && (
+          <p className="text-sm text-[var(--muted-foreground)]">
+            {loading ? "Loading badges…" : "No badges yet."}
+          </p>
+        )}
       </div>
     </div>
   )

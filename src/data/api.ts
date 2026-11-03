@@ -1,5 +1,5 @@
 import type { LoginRole } from "../components/LoginPage";
-import type { Product, ProductCategory } from "./mockData";
+import type { Badge, Product, ProductCategory } from "./mockData";
 
 /** Laravel API root. Set `VITE_API_URL` to point at another server. */
 const apiUrl = (
@@ -365,4 +365,60 @@ export async function apiSaveTier(token: string, tier: Omit<AdminTier, "customer
 
 export async function apiDeleteTier(token: string, id: string) {
   await request(`/backend/tiers/${id}`, { method: "DELETE", token });
+}
+
+type ApiBadge = {
+  id: number;
+  code: string;
+  name: string;
+  name_kh: string | null;
+  description: string | null;
+  icon: string | null;
+  color: string | null;
+  metric: NonNullable<Badge["metric"]>;
+  threshold: number;
+  customers_count: number;
+};
+
+/** A badge as the admin shows it, with how many customers have earned it. */
+export type AdminBadge = Badge & { customerCount: number };
+
+const toBadge = (b: ApiBadge): AdminBadge => ({
+  id: String(b.id),
+  code: b.code,
+  name: b.name,
+  nameKh: b.name_kh ?? "",
+  description: b.description ?? "",
+  icon: b.icon ?? "medal",
+  color: b.color ?? "#e8a634",
+  metric: b.metric,
+  threshold: b.threshold,
+  customerCount: b.customers_count,
+});
+
+/** Loads every badge. */
+export async function apiBadges(token: string): Promise<AdminBadge[]> {
+  return (await fetchAll<ApiBadge>("/backend/badges", token)).map(toBadge);
+}
+
+/** Creates the badge when it has no id yet; otherwise updates it. A badge's code is only sent on create. */
+export async function apiSaveBadge(token: string, badge: Badge) {
+  await request(badge.id ? `/backend/badges/${badge.id}` : "/backend/badges", {
+    method: badge.id ? "PATCH" : "POST",
+    token,
+    body: {
+      ...(!badge.id && { code: badge.code }),
+      name: badge.name,
+      name_kh: badge.nameKh || null,
+      description: badge.description || null,
+      icon: badge.icon,
+      color: badge.color || null,
+      metric: badge.metric,
+      threshold: badge.threshold,
+    },
+  });
+}
+
+export async function apiDeleteBadge(token: string, id: string) {
+  await request(`/backend/badges/${id}`, { method: "DELETE", token });
 }
