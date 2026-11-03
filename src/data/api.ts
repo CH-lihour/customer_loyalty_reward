@@ -1,4 +1,5 @@
 import type { LoginRole } from "../components/LoginPage";
+import type { Campaign } from "./shop";
 import type { Badge, Product, ProductCategory, Reward } from "./mockData";
 
 /** Laravel API root. Set `VITE_API_URL` to point at another server. */
@@ -495,4 +496,108 @@ export async function apiSetRewardActive(token: string, id: string, active: bool
 
 export async function apiDeleteReward(token: string, id: string) {
   await request(`/backend/rewards/${id}`, { method: "DELETE", token });
+}
+
+type ApiCampaign = {
+  id: number;
+  name: string;
+  name_kh: string | null;
+  description: string | null;
+  image_url: string | null;
+  banner_title: string | null;
+  banner_subtitle: string | null;
+  button_label: string | null;
+  link_url: string | null;
+  multiplier: string;
+  start_date: string;
+  end_date: string | null;
+  is_active: boolean;
+  show_on_home: boolean;
+  sort_order: number;
+};
+
+const toCampaign = (c: ApiCampaign): Campaign => ({
+  id: String(c.id),
+  name: c.name,
+  nameKh: c.name_kh ?? "",
+  description: c.description ?? "",
+  image: c.image_url ?? "",
+  bannerTitle: c.banner_title ?? "",
+  bannerSubtitle: c.banner_subtitle ?? "",
+  buttonLabel: c.button_label ?? "",
+  linkUrl: c.link_url ?? "",
+  multiplier: Number(c.multiplier),
+  startDate: c.start_date.slice(0, 10),
+  endDate: c.end_date?.slice(0, 10) ?? "",
+  active: c.is_active,
+  showOnHome: c.show_on_home,
+  sortOrder: c.sort_order,
+});
+
+/** Loads every campaign, for staff. */
+export async function apiCampaigns(token: string): Promise<Campaign[]> {
+  return (await fetchAll<ApiCampaign>("/backend/campaigns", token)).map(toCampaign);
+}
+
+/**
+ * Creates the campaign when it has no id yet; otherwise updates it. An `imageFile` is uploaded and replaces the
+ * banner image; otherwise `image` is kept as an external URL (an uploaded image's own URL is left as it is).
+ */
+export async function apiSaveCampaign(token: string, campaign: Campaign, imageFile?: File | null) {
+  // Multipart for the file. PHP only reads multipart bodies on POST, so updates spoof PATCH.
+  const form = new FormData();
+  if (campaign.id) form.append("_method", "PATCH");
+  const fields: Record<string, string> = {
+    name: campaign.name,
+    name_kh: campaign.nameKh ?? "",
+    description: campaign.description ?? "",
+    banner_title: campaign.bannerTitle ?? "",
+    banner_subtitle: campaign.bannerSubtitle ?? "",
+    button_label: campaign.buttonLabel ?? "",
+    link_url: campaign.linkUrl ?? "",
+    multiplier: String(campaign.multiplier),
+    start_date: campaign.startDate,
+    end_date: campaign.endDate,
+    is_active: campaign.active ? "1" : "0",
+    show_on_home: campaign.showOnHome ? "1" : "0",
+    sort_order: String(campaign.sortOrder ?? 0),
+  };
+  for (const [name, value] of Object.entries(fields)) form.append(name, value);
+  if (imageFile) form.append("image_file", imageFile);
+  else if (!campaign.image?.includes("/storage/")) form.append("image", campaign.image ?? "");
+  await request(campaign.id ? `/backend/campaigns/${campaign.id}` : "/backend/campaigns", { method: "POST", token, body: form });
+}
+
+/** Activates or deactivates a campaign. */
+export async function apiSetCampaignActive(token: string, id: string, active: boolean) {
+  await request(`/backend/campaigns/${id}/status`, { method: "PATCH", token, body: { is_active: active } });
+}
+
+export async function apiDeleteCampaign(token: string, id: string) {
+  await request(`/backend/campaigns/${id}`, { method: "DELETE", token });
+}
+
+/** A home-page banner: a live campaign the admin chose to show. */
+export type Banner = {
+  id: string;
+  title: string;
+  subtitle: string;
+  image: string;
+  buttonLabel: string;
+  linkUrl: string;
+  multiplier: number;
+};
+
+/** The live home-page banners, in display order. Public: guests see them too. */
+export async function apiBanners(): Promise<Banner[]> {
+  const { data } = await request<{ data: ApiCampaign[] }>("/campaigns/banners");
+  return data.map((c) => ({
+    id: String(c.id),
+    title: c.banner_title || c.name,
+    subtitle: c.banner_subtitle ?? "",
+    image: c.image_url ?? "",
+    buttonLabel: c.button_label ?? "",
+    linkUrl: c.link_url ?? "",
+    multiplier: Number(c.multiplier),
+  }));
 }

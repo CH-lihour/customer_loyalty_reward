@@ -3,6 +3,7 @@ import { meetsTier, nextTier as nextTierOf, tierRule } from "../../data/tiers";
 import { TierBadge } from "../../components/TierBadge";
 import { ProductCover } from "../../components/ProductImage";
 import { Icon } from "../../components/Icon";
+import { BannerCarousel } from "../../components/BannerCarousel";
 
 interface Props {
   onNav: (p: string) => void;
@@ -49,6 +50,7 @@ export function HomePage({
     return (
       <div className="flex flex-col gap-8">
         <h1 className="font-display text-2xl font-semibold">Home</h1>
+        <BannerCarousel />
         <section className="rounded-2xl bg-[image:var(--hero-gradient)] p-6">
           <p className="mb-3 text-sm font-semibold text-[var(--gold-mid)]">
             Shop local · Earn more
@@ -144,6 +146,7 @@ export function HomePage({
   return (
     <div className="flex flex-col gap-8">
       <h1 className="font-display text-2xl font-semibold">Home</h1>
+      <BannerCarousel />
       {/* Hero loyalty card */}
       <div
         className="relative overflow-hidden rounded-2xl p-6"

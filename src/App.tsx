@@ -3,6 +3,7 @@ import { useShop } from "./data/shop";
 import { useApiTiers } from "./data/tierSync";
 import { useApiBadges } from "./data/badgeSync";
 import { useApiRewards } from "./data/rewardSync";
+import { useApiCampaigns } from "./data/campaignSync";
 import { useFeedback } from "./components/FeedbackProvider";
 import { LoginPage, type LoginRole } from "./components/LoginPage";
 import { CustomerLayout } from "./components/CustomerLayout";
@@ -193,6 +194,12 @@ export default function App() {
   // And rewards, so the customer catalog and redemptions use the admin's rewards.
   useApiRewards(
     session?.role === "admin" && allowedAdminPages.includes("rewards")
+      ? session.token
+      : null,
+  );
+  // And campaigns, so order points use the admin's campaign multipliers.
+  useApiCampaigns(
+    session?.role === "admin" && allowedAdminPages.includes("campaigns")
       ? session.token
       : null,
   );
@@ -540,7 +547,9 @@ export default function App() {
         {adminPage === "tiers" && (
           <AdminTiersPage actorId={adminUser.id} token={session.token} />
         )}
-        {adminPage === "campaigns" && <AdminCampaignsPage />}
+        {adminPage === "campaigns" && (
+          <AdminCampaignsPage actorId={adminUser.id} token={session.token} />
+        )}
         {adminPage === "rewards" && (
           <AdminRewardsPage actorId={adminUser.id} token={session.token} />
         )}

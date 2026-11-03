@@ -90,13 +90,24 @@ export type TierChange = {
   reason: string;
   createdAt: string;
 };
+/** A bonus-points campaign, optionally shown as a home-page banner. Banner fields are absent on campaigns saved before them. */
 export type Campaign = {
   id: string;
   name: string;
   multiplier: number;
   startDate: string;
+  /** Empty when the campaign has no end date. */
   endDate: string;
   active: boolean;
+  nameKh?: string;
+  description?: string;
+  image?: string;
+  bannerTitle?: string;
+  bannerSubtitle?: string;
+  buttonLabel?: string;
+  linkUrl?: string;
+  showOnHome?: boolean;
+  sortOrder?: number;
 };
 export type LogEntry = {
   id: string;
@@ -746,8 +757,8 @@ type Shop = State & {
   ) => void;
   /** Replaces every badge with the ones loaded from the API; customers lose badges that no longer exist. */
   syncBadges: (badges: Badge[]) => void;
-  saveCampaign: (campaign: Campaign) => void;
-  deleteCampaign: (id: string) => void;
+  /** Replaces every campaign with the ones loaded from the API, so order points use their multipliers. */
+  syncCampaigns: (campaigns: Campaign[]) => void;
   updateProfile: (
     fields: Pick<Customer, "name" | "phone" | "province">,
   ) => void;
@@ -1053,7 +1064,7 @@ export function ShopProvider({ children }: { children: ReactNode }) {
               ...s.campaigns
                 .filter(
                   (c) =>
-                    c.active && c.startDate <= date() && c.endDate >= date(),
+                    c.active && c.startDate <= date() && (!c.endDate || c.endDate >= date()),
                 )
                 .map((c) => c.multiplier),
             );
@@ -1719,18 +1730,10 @@ export function ShopProvider({ children }: { children: ReactNode }) {
             ),
           };
         }),
-      saveCampaign: (campaign) =>
-        setState((s) => ({
-          ...s,
-          campaigns: s.campaigns.some((c) => c.id === campaign.id)
-            ? s.campaigns.map((c) => (c.id === campaign.id ? campaign : c))
-            : [campaign, ...s.campaigns],
-        })),
-      deleteCampaign: (id) =>
-        setState((s) => ({
-          ...s,
-          campaigns: s.campaigns.filter((c) => c.id !== id),
-        })),
+      syncCampaigns: (campaigns) =>
+        setState((s) =>
+          JSON.stringify(campaigns) === JSON.stringify(s.campaigns) ? s : { ...s, campaigns },
+        ),
       updateProfile: (fields) =>
         setState((s) => ({
           ...s,
