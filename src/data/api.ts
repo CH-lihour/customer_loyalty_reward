@@ -1,5 +1,5 @@
 import type { LoginRole } from "../components/LoginPage";
-import type { Badge, Product, ProductCategory } from "./mockData";
+import type { Badge, Product, ProductCategory, Reward } from "./mockData";
 
 /** Laravel API root. Set `VITE_API_URL` to point at another server. */
 const apiUrl = (
@@ -421,4 +421,78 @@ export async function apiSaveBadge(token: string, badge: Badge) {
 
 export async function apiDeleteBadge(token: string, id: string) {
   await request(`/backend/badges/${id}`, { method: "DELETE", token });
+}
+
+type ApiReward = {
+  id: number;
+  min_tier_id: number;
+  min_tier: { id: number; name: string } | null;
+  name: string;
+  name_kh: string | null;
+  description: string | null;
+  category: string | null;
+  points_cost: number;
+  stock: number;
+  image_url: string | null;
+  is_active: boolean;
+  expires_at: string | null;
+};
+
+/** Shown for a reward with no image. */
+const rewardPlaceholder =
+  "https://images.unsplash.com/photo-1607082349566-187342175e2f?w=300&h=200&fit=crop&auto=format";
+
+const toReward = (r: ApiReward): Reward => ({
+  id: String(r.id),
+  name: r.name,
+  nameKh: r.name_kh ?? "",
+  description: r.description ?? "",
+  pointsCost: r.points_cost,
+  stock: r.stock,
+  minTier: r.min_tier?.name ?? "",
+  active: r.is_active,
+  category: r.category ?? "",
+  image: r.image_url ?? rewardPlaceholder,
+  ...(r.expires_at && { expiresAt: r.expires_at.slice(0, 10) }),
+});
+
+/** Loads every reward. */
+export async function apiRewards(token: string): Promise<Reward[]> {
+  return (await fetchAll<ApiReward>("/backend/rewards", token)).map(toReward);
+}
+
+/** The tiers a reward can require, from the entry tier upwards, with their ids. */
+export async function apiRewardTierOptions(token: string) {
+  const { data } = await request<{ data: { id: number; name: string }[] }>("/backend/rewards/tier-options", { token });
+  return data;
+}
+
+/**
+ * Creates the reward when it has no id yet; otherwise updates it. An `imageFile` is uploaded and replaces the
+ * image; otherwise `image` is kept as an external URL (an uploaded image's own URL is left as it is).
+ */
+export async function apiSaveReward(token: string, reward: Reward, minTierId: number, imageFile?: File | null) {
+  // Multipart for the file. PHP only reads multipart bodies on POST, so updates spoof PATCH.
+  const form = new FormData();
+  if (reward.id) form.append("_method", "PATCH");
+  form.append("min_tier_id", String(minTierId));
+  form.append("name", reward.name);
+  form.append("name_kh", reward.nameKh);
+  form.append("description", reward.description);
+  form.append("category", reward.category);
+  form.append("points_cost", String(reward.pointsCost));
+  form.append("is_active", reward.active ? "1" : "0");
+  form.append("expires_at", reward.expiresAt ?? "");
+  if (imageFile) form.append("image_file", imageFile);
+  else if (!reward.image.includes("/storage/")) form.append("image", reward.image);
+  await request(reward.id ? `/backend/rewards/${reward.id}` : "/backend/rewards", { method: "POST", token, body: form });
+}
+
+/** Activates or deactivates a reward. */
+export async function apiSetRewardActive(token: string, id: string, active: boolean) {
+  await request(`/backend/rewards/${id}/status`, { method: "PATCH", token, body: { is_active: active } });
+}
+
+export async function apiDeleteReward(token: string, id: string) {
+  await request(`/backend/rewards/${id}`, { method: "DELETE", token });
 }

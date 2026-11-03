@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useShop } from "./data/shop";
 import { useApiTiers } from "./data/tierSync";
 import { useApiBadges } from "./data/badgeSync";
+import { useApiRewards } from "./data/rewardSync";
 import { useFeedback } from "./components/FeedbackProvider";
 import { LoginPage, type LoginRole } from "./components/LoginPage";
 import { CustomerLayout } from "./components/CustomerLayout";
@@ -186,6 +187,12 @@ export default function App() {
   // Likewise badges, so customers earn and see the badges the admin manages.
   useApiBadges(
     session?.role === "admin" && allowedAdminPages.includes("badges")
+      ? session.token
+      : null,
+  );
+  // And rewards, so the customer catalog and redemptions use the admin's rewards.
+  useApiRewards(
+    session?.role === "admin" && allowedAdminPages.includes("rewards")
       ? session.token
       : null,
   );
@@ -534,7 +541,9 @@ export default function App() {
           <AdminTiersPage actorId={adminUser.id} token={session.token} />
         )}
         {adminPage === "campaigns" && <AdminCampaignsPage />}
-        {adminPage === "rewards" && <AdminRewardsPage />}
+        {adminPage === "rewards" && (
+          <AdminRewardsPage actorId={adminUser.id} token={session.token} />
+        )}
         {adminPage === "badges" && (
           <AdminBadgesPage actorId={adminUser.id} token={session.token} />
         )}

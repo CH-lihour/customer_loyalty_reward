@@ -345,6 +345,21 @@ const uid = () =>
 const now = () => new Date().toISOString();
 const date = () => now().slice(0, 10);
 const stamp = () => now().replace("T", " ").slice(0, 16);
+/** Points every stock record, redemption and restock request of a renamed reward id at its new id. */
+const remapRewardIds = (s: State, ids: Record<string, string>): State => {
+  const swap = <T extends { rewardId: string }>(row: T): T =>
+    ids[row.rewardId] ? { ...row, rewardId: ids[row.rewardId] } : row;
+  return {
+    ...s,
+    stockItems: Object.fromEntries(
+      Object.entries(s.stockItems).map(([id, item]) => [ids[id] ?? id, swap(item)]),
+    ),
+    stockMovements: s.stockMovements.map(swap),
+    redemptions: s.redemptions.map(swap),
+    restockRequests: s.restockRequests.map(swap),
+    stocktakes: s.stocktakes.map((take) => ({ ...take, lines: take.lines.map(swap) })),
+  };
+};
 /**
  * Puts every customer in the tier their qualifying points reach under `tiers`, keeping admin overrides
  * that still name a tier, and records each change in the tier history.
@@ -715,8 +730,13 @@ type Shop = State & {
   syncCatalog: (categories: ProductCategory[], products: Product[], stock?: Record<string, number>) => void;
   /** Adds a staff activity-log entry for a change made through the API. */
   logStaffAction: (actorId: string, event: string, description: string) => void;
-  saveReward: (reward: Reward) => void;
-  deleteReward: (id: string) => string | null;
+  /**
+   * Replaces every reward with the ones loaded from the API. Demo rewards are matched to API rewards by
+   * name the first time, so their stock and redemptions follow them to the API's ids.
+   */
+  syncRewards: (rewards: Reward[]) => void;
+  /** Why the reward's stock or open redemptions keep it from being deleted, or null when it can go. */
+  rewardDeleteBlocker: (id: string) => string | null;
   /** Replaces every tier with the ones loaded from the API, recalculating customers' tiers when they changed. */
   syncTiers: (tiers: TierTable) => void;
   overrideTier: (
@@ -1617,26 +1637,34 @@ export function ShopProvider({ children }: { children: ReactNode }) {
           const actor = s.adminUsers.find((user) => user.id === actorId);
           return actor ? { ...s, logs: staffLog(s, actor, event, description) } : s;
         }),
-      saveReward: (reward) =>
-        setState((s) => ({
-          ...s,
-          rewards: s.rewards.some((r) => r.id === reward.id)
-            ? s.rewards.map((r) => (r.id === reward.id ? reward : r))
-            : [reward, ...s.rewards],
-          stockItems: s.stockItems[reward.id] ? s.stockItems : { ...s.stockItems, [reward.id]: defaultStockItem(reward) },
-        })),
-      deleteReward: (id) =>
-        commit((s) => {
-          const totals = totalsFor(computeLevels(s.stockMovements), { rewardId: id });
-          if (totals.onHand || totals.reserved) return "Write off or transfer this reward's stock to zero before deleting it.";
-          if (s.redemptions.some((r) => r.rewardId === id && (r.status === "RESERVED" || r.status === "BACKORDERED")))
-            return "This reward has open redemptions. Fulfil or cancel them first.";
+      syncRewards: (rewards) =>
+        setState((s) => {
+          // Demo rewards predate the API's ids; move their stock and redemptions to the matching API reward once.
+          const apiIds = new Set(rewards.map((r) => r.id));
+          const legacyIds: Record<string, string> = {};
+          for (const old of s.rewards) {
+            if (apiIds.has(old.id)) continue;
+            const match = rewards.find((r) => r.name === old.name);
+            if (match && !s.rewards.some((r) => r.id === match.id)) legacyIds[old.id] = match.id;
+          }
+          const next = Object.keys(legacyIds).length ? remapRewardIds(s, legacyIds) : s;
+          if (JSON.stringify(rewards) === JSON.stringify(next.rewards)) return next;
+          const stockItems = { ...next.stockItems };
+          for (const reward of rewards) stockItems[reward.id] ??= defaultStockItem(reward);
           return {
-            ...s,
-            rewards: s.rewards.filter((r) => r.id !== id),
-            restockRequests: s.restockRequests.filter((r) => r.rewardId !== id),
+            ...next,
+            rewards,
+            stockItems,
+            restockRequests: next.restockRequests.filter((r) => apiIds.has(r.rewardId)),
           };
         }),
+      rewardDeleteBlocker: (id) => {
+        const totals = totalsFor(computeLevels(state.stockMovements), { rewardId: id });
+        if (totals.onHand || totals.reserved) return "Write off or transfer this reward's stock to zero before deleting it.";
+        if (state.redemptions.some((r) => r.rewardId === id && (r.status === "RESERVED" || r.status === "BACKORDERED")))
+          return "This reward has open redemptions. Fulfil or cancel them first.";
+        return null;
+      },
       syncTiers: (tiers) =>
         setState((s) =>
           JSON.stringify(tiers) === JSON.stringify(s.tiers)

@@ -1,6 +1,13 @@
-import { useState, type FormEvent } from "react"
+import { useEffect, useRef, useState, type FormEvent } from "react"
 import { type Reward, type Tier } from "../../data/mockData"
 import { useShop } from "../../data/shop"
+import {
+  apiDeleteReward,
+  apiRewardTierOptions,
+  apiSaveReward,
+  apiSetRewardActive,
+} from "../../data/api"
+import { useApiRewards } from "../../data/rewardSync"
 import { useFeedback } from "../../components/FeedbackProvider"
 import { tierOrder } from "../../data/tiers"
 import { TierBadge } from "../../components/TierBadge"
@@ -19,55 +26,144 @@ const blank = (minTier: Tier): Reward => ({
   minTier,
   active: true,
   category: "Discount",
-  image: "",
+  image:
+    "https://images.unsplash.com/photo-1607082349566-187342175e2f?w=300&h=200&fit=crop&auto=format",
 })
 const field =
   "w-full rounded-lg border border-[var(--border)] bg-[var(--secondary)] px-3 py-2"
-export function AdminRewardsPage() {
-  const { rewards, tiers, saveReward, deleteReward, availableFor, stockItemFor } = useShop()
+export function AdminRewardsPage({
+  actorId,
+  token,
+}: {
+  actorId: string
+  token: string
+}) {
+  const { rewards, tiers, availableFor, stockItemFor, rewardDeleteBlocker, logStaffAction } = useShop()
+  const { loadError, reload } = useApiRewards(token)
   const { notify, confirm } = useFeedback()
   const [editing, setEditing, modalClosing] = useModalState<Reward | null>(null)
   const [previewId, setPreviewId, previewClosing] = useModalState<string | null>(null)
   const [error, setError] = useState("")
+  const [saving, setSaving] = useState(false)
+  const [imageFile, setImageFile] = useState<File | null>(null)
+  // Tier ids for the minimum-tier choice; staff without the tiers page still get them here.
+  const [tierOptions, setTierOptions] = useState<{ id: number; name: string }[]>([])
+  const notifyRef = useRef(notify)
+  notifyRef.current = notify
+  useEffect(() => {
+    let cancelled = false
+    apiRewardTierOptions(token).then(
+      (options) => !cancelled && setTierOptions(options),
+      (failure: Error) => !cancelled && notifyRef.current(failure.message, "error"),
+    )
+    return () => {
+      cancelled = true
+    }
+  }, [token])
+  const tierNames = tierOptions.length ? tierOptions.map((t) => t.name) : tierOrder(tiers)
   const previewReward = rewards.find((reward) => reward.id === previewId)
   const change = <K extends keyof Reward>(key: K, value: Reward[K]) =>
     setEditing((r) => (r ? { ...r, [key]: value } : r))
-  const save = (e: FormEvent) => {
+  const open = (reward: Reward) => {
+    setError("")
+    setImageFile(null)
+    setEditing(reward)
+  }
+  const close = () => {
+    setEditing(null)
+    setError("")
+    setImageFile(null)
+  }
+  const save = async (e: FormEvent) => {
     e.preventDefault()
-    if (!editing || !editing.name.trim() || editing.pointsCost < 1) {
+    if (!editing || saving) return
+    if (!editing.name.trim() || editing.pointsCost < 1) {
       setError("Enter a name and a positive point cost.")
       return
     }
-    saveReward({
-      ...editing,
-      id: editing.id || `r-${Date.now()}`,
-      image:
-        editing.image ||
-        "https://images.unsplash.com/photo-1607082349566-187342175e2f?w=300&h=200&fit=crop&auto=format",
-    })
-    setEditing(null)
+    const minTierId = tierOptions.find((t) => t.name === editing.minTier)?.id
+    if (!minTierId) {
+      setError("Choose a minimum tier.")
+      return
+    }
+    setSaving(true)
     setError("")
-    notify("Reward saved.", "success")
+    try {
+      await apiSaveReward(
+        token,
+        { ...editing, name: editing.name.trim(), category: editing.category.trim() },
+        minTierId,
+        imageFile,
+      )
+      await reload()
+      logStaffAction(
+        actorId,
+        editing.id ? "REWARD_UPDATED" : "REWARD_CREATED",
+        `${editing.id ? "Updated" : "Created"} reward ${editing.name.trim()}`,
+      )
+      close()
+      notify("Reward saved.", "success")
+    } catch (failure) {
+      setError((failure as Error).message)
+      notify((failure as Error).message, "error")
+    } finally {
+      setSaving(false)
+    }
+  }
+  const toggle = async (r: Reward) => {
+    try {
+      await apiSetRewardActive(token, r.id, !r.active)
+      await reload()
+      logStaffAction(
+        actorId,
+        "REWARD_UPDATED",
+        `${r.active ? "Deactivated" : "Activated"} reward ${r.name}`,
+      )
+      notify(`Reward ${r.active ? "deactivated" : "activated"}.`, "success")
+    } catch (failure) {
+      notify((failure as Error).message, "error")
+    }
+  }
+  const remove = async (r: Reward) => {
+    if (!(await confirm(`Delete ${r.name}?`))) return
+    const blocker = rewardDeleteBlocker(r.id)
+    if (blocker) {
+      notify(blocker, "error")
+      return
+    }
+    try {
+      await apiDeleteReward(token, r.id)
+      await reload()
+      logStaffAction(actorId, "REWARD_DELETED", `Deleted reward ${r.name}`)
+      notify(`${r.name} deleted.`, "success")
+    } catch (failure) {
+      notify((failure as Error).message, "error")
+    }
   }
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
         <h1 className="font-display text-2xl font-semibold">Rewards Catalog</h1>
         <button
-          onClick={() => setEditing(blank(tierOrder(tiers)[0] ?? ""))}
+          onClick={() => open(blank(tierNames[0] ?? ""))}
           className="rounded-lg bg-[var(--gold-mid)] px-4 py-2 text-sm font-semibold text-[var(--background)]"
         >
           + Add Reward
         </button>
       </div>
+      {loadError && (
+        <p
+          role="alert"
+          className="rounded-lg border border-red-400/40 p-3 text-sm text-red-400"
+        >
+          Couldn't load rewards: {loadError}
+        </p>
+      )}
       {editing && (
         <AdminModal
           closing={modalClosing}
           title={editing.id ? "Edit Reward" : "New Reward"}
-          onClose={() => {
-            setEditing(null)
-            setError("")
-          }}
+          onClose={close}
           wide
         >
           <form onSubmit={save} className="space-y-3">
@@ -76,6 +172,7 @@ export function AdminRewardsPage() {
                 Name
                 <input
                   required
+                  maxLength={255}
                   className={field}
                   value={editing.name}
                   onChange={(e) => change("name", e.target.value)}
@@ -92,6 +189,7 @@ export function AdminRewardsPage() {
               <label className="text-xs">
                 Category
                 <input
+                  maxLength={50}
                   className={field}
                   value={editing.category}
                   onChange={(e) => change("category", e.target.value)}
@@ -118,7 +216,7 @@ export function AdminRewardsPage() {
                   value={editing.minTier}
                   onChange={(e) => change("minTier", e.target.value as Tier)}
                 >
-                  {[...new Set([...tierOrder(tiers), editing.minTier])].map((t) => (
+                  {[...new Set([...tierNames, editing.minTier])].map((t) => (
                     <option key={t}>{t}</option>
                   ))}
                 </select>
@@ -126,6 +224,7 @@ export function AdminRewardsPage() {
               <label className="text-xs sm:col-span-2 lg:col-span-3">
                 Description
                 <textarea
+                  maxLength={2000}
                   className={field}
                   value={editing.description}
                   onChange={(e) => change("description", e.target.value)}
@@ -144,9 +243,19 @@ export function AdminRewardsPage() {
                 Image URL
                 <input
                   type="url"
+                  disabled={!!imageFile}
                   className={field}
                   value={editing.image}
                   onChange={(e) => change("image", e.target.value)}
+                />
+              </label>
+              <label className="text-xs sm:col-span-2 lg:col-span-3">
+                Or upload an image (JPG, PNG or WebP, up to 4 MB)
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  className={field}
+                  onChange={(e) => setImageFile(e.target.files?.[0] ?? null)}
                 />
               </label>
               <label className="flex items-center gap-2">
@@ -164,15 +273,15 @@ export function AdminRewardsPage() {
               </p>
             )}
             <div className="flex gap-2">
-              <button className="rounded-lg bg-[var(--gold-mid)] px-4 py-2 text-[var(--background)]">
-                Save Reward
+              <button
+                disabled={saving}
+                className="rounded-lg bg-[var(--gold-mid)] px-4 py-2 text-[var(--background)] disabled:opacity-60"
+              >
+                {saving ? "Saving…" : "Save Reward"}
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  setEditing(null)
-                  setError("")
-                }}
+                onClick={close}
                 className="rounded-lg bg-[var(--secondary)] px-4 py-2"
               >
                 Cancel
@@ -204,28 +313,16 @@ export function AdminRewardsPage() {
                 <span className="block font-mono-data text-xs text-[var(--muted-foreground)]">{stockItemFor(r.id).sku}</span>
               </p>
               <div className="flex items-center gap-2 text-sm">
-                <ActionIconButton action="edit" label={`Edit ${r.name}`} onClick={() => setEditing(r)} />
+                <ActionIconButton action="edit" label={`Edit ${r.name}`} onClick={() => open(r)} />
                 <ActionIconButton
                   action={r.active ? "deactivate" : "activate"}
                   label={`${r.active ? "Deactivate" : "Activate"} ${r.name}`}
-                  onClick={() => {
-                    saveReward({ ...r, active: !r.active })
-                    notify(
-                      `Reward ${r.active ? "deactivated" : "activated"}.`,
-                      "success",
-                    )
-                  }}
+                  onClick={() => void toggle(r)}
                 />
                 <ActionIconButton
                   action="delete"
                   label={`Delete ${r.name}`}
-                  onClick={() => {
-                    void confirm(`Delete ${r.name}?`).then((ok) => {
-                      if (!ok) return
-                      const result = deleteReward(r.id)
-                      notify(result ?? `${r.name} deleted.`, result ? "error" : "success")
-                    })
-                  }}
+                  onClick={() => void remove(r)}
                 />
               </div>
             </div>
