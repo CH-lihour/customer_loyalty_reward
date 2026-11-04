@@ -31,7 +31,7 @@ import {
 } from "./mockData";
 import { extraCustomers, extraProducts } from "./seedExtras";
 import { meetsTier, tierFor, tierRule, type TierTable } from "./tiers";
-import type { ApiProfile, ApiRole } from "./api";
+import type { ApiProfile, ApiRole, StockSnapshot } from "./api";
 import {
   adminPages,
   defaultAdminRoleLabels,
@@ -739,6 +739,11 @@ type Shop = State & {
    * other products keep the count the store already has. Cart lines for removed products are dropped.
    */
   syncCatalog: (categories: ProductCategory[], products: Product[], stock?: Record<string, number>) => void;
+  /**
+   * Replaces rewards, stock rules, locations, suppliers, the ledger and stocktakes with those loaded from the API.
+   * Rewards keep the store's expiry, and its image when the API sends none, matching by id, then by name for seeded rewards.
+   */
+  syncStock: (snapshot: StockSnapshot) => void;
   /** Adds a staff activity-log entry for a change made through the API. */
   logStaffAction: (actorId: string, event: string, description: string) => void;
   /**
@@ -1619,6 +1624,19 @@ export function ShopProvider({ children }: { children: ReactNode }) {
             customers: s.customers.map((c) => (c.id === userId ? { ...c, points, tier } : c)),
             qualifyingPoints: { ...s.qualifyingPoints, [userId]: earned },
             transactions: [...history, ...s.transactions.filter((t) => t.userId !== userId)],
+          };
+        }),
+      syncStock: (snapshot) =>
+        setState((s) => {
+          const saved = new Map(s.rewards.flatMap((r) => [[r.id, r], [r.name.toLowerCase(), r]] as const));
+          return {
+            ...s,
+            ...snapshot,
+            // The snapshot has no expiry and may have no image, so those stay as the store knows them.
+            rewards: snapshot.rewards.map((r) => {
+              const known = saved.get(r.id) ?? saved.get(r.name.toLowerCase());
+              return { ...known, ...r, image: r.image || known?.image || "" };
+            }),
           };
         }),
       syncCatalog: (categories, products, stock = {}) =>

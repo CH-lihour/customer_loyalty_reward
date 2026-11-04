@@ -1,5 +1,7 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { useShop } from "../../data/shop";
+import { apiSaveStockItem } from "../../data/api";
+import { useStockApi, useStockMutation } from "../../data/stockApi";
 import { useFeedback } from "../../components/FeedbackProvider";
 import { AdminModal } from "../../components/AdminModal";
 import { useModalState } from "../../components/useModalState";
@@ -321,20 +323,26 @@ function StockItemDetail({ actorId, rewardId, onBack, onOpen }: { actorId: strin
         </div>
         <TablePagination {...historyTable.pagination} />
       </Panel>
-      {editing && <StockItemSettingsDialog actorId={actorId} item={editing} onClose={() => setEditing(null)} closing={editClosing} />}
+      {editing && <StockItemSettingsDialog item={editing} onClose={() => setEditing(null)} closing={editClosing} />}
     </>
   );
 }
 
-function StockItemSettingsDialog({ actorId, item, onClose, closing }: { actorId: string; item: StockItem; onClose: () => void; closing: boolean }) {
+function StockItemSettingsDialog({ item, onClose, closing }: { item: StockItem; onClose: () => void; closing: boolean }) {
   const shop = useShop();
   const { notify } = useFeedback();
+  const { token } = useStockApi();
+  const mutate = useStockMutation();
   const [draft, setDraft] = useState(item);
   const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
   const change = <K extends keyof StockItem>(key: K, value: StockItem[K]) => setDraft((d) => ({ ...d, [key]: value }));
-  const submit = (event: FormEvent) => {
+  const submit = async (event: FormEvent) => {
     event.preventDefault();
-    const result = shop.saveStockItem(actorId, draft);
+    if (saving) return;
+    setSaving(true);
+    const result = await mutate(() => apiSaveStockItem(token, draft));
+    setSaving(false);
     if (result) return setError(result);
     notify("Stock rules saved.", "success");
     onClose();
@@ -393,7 +401,7 @@ function StockItemSettingsDialog({ actorId, item, onClose, closing }: { actorId:
         {error && <p role="alert" className="text-sm text-red-400">{error}</p>}
         <div className="flex justify-end gap-2">
           <button type="button" onClick={onClose} className={secondaryButton}>Cancel</button>
-          <button type="submit" className={primaryButton}>Save rules</button>
+          <button type="submit" disabled={saving} className={primaryButton}>{saving ? "Saving…" : "Save rules"}</button>
         </div>
       </form>
     </AdminModal>

@@ -1,14 +1,18 @@
 import { useState } from "react";
 import { useShop } from "../../data/shop";
 import { useModalState } from "../../components/useModalState";
-import { TablePagination, usePagedRows } from "../../components/TablePagination";
+import { TablePagination } from "../../components/TablePagination";
 import { StockMovementDialog, type StockFormMode, type StockFormPreset } from "../../components/StockMovementDialog";
 import { EmptyRow, MovementBadge, PageHeader, filterControl, formatDateTime, rowClass, tableClass, theadClass } from "../../components/StockUi";
 import { StockActionButtons } from "./StockPage";
+import { apiStockMovementPage } from "../../data/api";
+import { useApiTable } from "../../data/apiTable";
+import { useStockApi } from "../../data/stockApi";
 import { movementLabels, variantLabel, type StockMovementType } from "../../data/stock";
 
 export function AdminStockMovementsPage({ actorId }: { actorId: string }) {
   const shop = useShop();
+  const { token } = useStockApi();
   const [dialog, setDialog, dialogClosing] = useModalState<{ mode: StockFormMode; preset?: StockFormPreset } | null>(null);
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
@@ -16,19 +20,25 @@ export function AdminStockMovementsPage({ actorId }: { actorId: string }) {
   const [locationId, setLocationId] = useState("all");
   const [rewardId, setRewardId] = useState("all");
   const [actor, setActor] = useState("all");
+  const [net, setNet] = useState(0);
   const locName = (id: string) => shop.stockLocations.find((l) => l.id === id)?.name ?? id;
-  const actors = [...new Set(shop.stockMovements.map((m) => m.actorName))].sort();
+  // Everyone who has recorded stock, from the ledger loaded for the other inventory pages.
+  const actors = [...new Map(shop.stockMovements.map((m) => [m.actorId, m.actorName]))].sort((a, b) => a[1].localeCompare(b[1]));
 
-  const filtered = shop.stockMovements.filter((m) => {
-    const day = m.createdAt.slice(0, 10);
-    return (!from || day >= from) && (!to || day <= to) &&
-      (type === "all" || m.type === type) &&
-      (locationId === "all" || m.locationId === locationId) &&
-      (rewardId === "all" || m.rewardId === rewardId) &&
-      (actor === "all" || m.actorName === actor);
-  });
-  const net = filtered.reduce((n, m) => n + m.onHand, 0);
-  const table = usePagedRows(filtered);
+  const filters = {
+    from,
+    to,
+    type: type === "all" ? "" : type,
+    location_id: locationId === "all" ? "" : locationId,
+    reward_id: rewardId === "all" ? "" : rewardId,
+    actor_id: actor === "all" ? "" : actor.replace(/^api-admin-/, ""),
+  };
+  const table = useApiTable(async (page, perPage) => {
+    const result = await apiStockMovementPage(token, { page, perPage, ...filters });
+    setNet(result.netOnHand);
+    return result;
+    // A recorded movement reloads the ledger, which refetches this page.
+  }, `${JSON.stringify(filters)}|${shop.stockMovements.length}`);
 
   return (
     <div className="flex flex-col gap-5 pb-8">
@@ -52,12 +62,13 @@ export function AdminStockMovementsPage({ actorId }: { actorId: string }) {
         </select>
         <select aria-label="Recorded by" value={actor} onChange={(e) => setActor(e.target.value)} className={filterControl}>
           <option value="all">Anyone</option>
-          {actors.map((a) => <option key={a}>{a}</option>)}
+          {actors.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
         </select>
       </div>
       <p className="text-xs text-[var(--muted-foreground)]">
-        {filtered.length} entries · net on-hand change <span className={net >= 0 ? "text-green-400" : "text-red-400"}>{net > 0 ? "+" : ""}{net}</span>
+        {table.pagination.total} entries · net on-hand change <span className={net >= 0 ? "text-green-400" : "text-red-400"}>{net > 0 ? "+" : ""}{net}</span>
       </p>
+      {table.error && <p role="alert" className="text-sm text-red-400">{table.error}</p>}
       <div className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)]">
         <div className="overflow-x-auto">
         <table className={`${tableClass} min-w-[1000px]`}>
@@ -82,7 +93,8 @@ export function AdminStockMovementsPage({ actorId }: { actorId: string }) {
                 </tr>
               );
             })}
-            {!filtered.length && <EmptyRow colSpan={9}>No movements match these filters.</EmptyRow>}
+            {!table.loading && !table.rows.length && <EmptyRow colSpan={9}>No movements match these filters.</EmptyRow>}
+            {table.loading && !table.rows.length && <EmptyRow colSpan={9}>Loading movements…</EmptyRow>}
           </tbody>
         </table>
         </div>

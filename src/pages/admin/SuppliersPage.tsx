@@ -1,5 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { useShop } from "../../data/shop";
+import { apiSaveStockLocation, apiSaveSupplier } from "../../data/api";
+import { useStockApi, useStockMutation } from "../../data/stockApi";
 import { useFeedback } from "../../components/FeedbackProvider";
 import { AdminModal } from "../../components/AdminModal";
 import { ActionIconButton } from "../../components/ActionIconButton";
@@ -20,29 +22,31 @@ export function AdminSuppliersPage({ actorId }: { actorId: string }) {
   const [supplier, setSupplier, supplierClosing] = useModalState<Supplier | null>(null);
   const [location, setLocation, locationClosing] = useModalState<StockLocation | null>(null);
   const [error, setError] = useState("");
+  const { token } = useStockApi();
+  const mutate = useStockMutation();
   const supplierTable = usePagedRows(shop.suppliers);
   const locationTable = usePagedRows(shop.stockLocations);
 
-  const toggleSupplier = (x: Supplier) => {
-    const result = shop.saveSupplier(actorId, { ...x, active: !x.active });
+  const toggleSupplier = async (x: Supplier) => {
+    const result = await mutate(() => apiSaveSupplier(token, { ...x, active: !x.active }));
     notify(result ?? `${x.name} ${x.active ? "deactivated" : "activated"}.`, result ? "error" : "success");
   };
-  const toggleLocation = (x: StockLocation) => {
-    const result = shop.saveStockLocation(actorId, { ...x, active: !x.active });
+  const toggleLocation = async (x: StockLocation) => {
+    const result = await mutate(() => apiSaveStockLocation(token, { ...x, active: !x.active }));
     notify(result ?? `${x.name} ${x.active ? "deactivated" : "activated"}.`, result ? "error" : "success");
   };
-  const submitSupplier = (event: FormEvent) => {
+  const submitSupplier = async (event: FormEvent) => {
     event.preventDefault();
     if (!supplier) return;
-    const result = shop.saveSupplier(actorId, supplier);
+    const result = await mutate(() => apiSaveSupplier(token, supplier));
     if (result) return setError(result);
     setSupplier(null);
     notify("Supplier saved.", "success");
   };
-  const submitLocation = (event: FormEvent) => {
+  const submitLocation = async (event: FormEvent) => {
     event.preventDefault();
     if (!location) return;
-    const result = shop.saveStockLocation(actorId, location);
+    const result = await mutate(() => apiSaveStockLocation(token, location));
     if (result) return setError(result);
     setLocation(null);
     notify("Location saved.", "success");

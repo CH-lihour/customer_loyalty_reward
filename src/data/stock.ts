@@ -106,6 +106,8 @@ export type RestockRequest = {
 };
 
 export type StocktakeLine = {
+  /** The API's line id; counts are saved against it. */
+  id?: string;
   rewardId: string;
   variantId: string;
   batch: string;

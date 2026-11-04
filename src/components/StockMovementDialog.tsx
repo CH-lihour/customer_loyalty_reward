@@ -1,8 +1,10 @@
 import { useState, type FormEvent } from "react";
 import { AdminModal } from "./AdminModal";
 import { useFeedback } from "./FeedbackProvider";
-import { field, primaryButton, secondaryButton, useStockAccess } from "./StockUi";
-import { useShop, type StockLineInput } from "../data/shop";
+import { field, primaryButton, secondaryButton } from "./StockUi";
+import { useShop } from "../data/shop";
+import { apiRecordStockMovement, type StockMovementBody } from "../data/api";
+import { useStockApi, useStockMutation } from "../data/stockApi";
 import { batchExpiries, levelKey, todayDate, variantIds, variantLabel } from "../data/stock";
 
 export type StockFormMode = "receive" | "adjust" | "transfer" | "writeoff" | "return";
@@ -29,7 +31,6 @@ export function StockMovementDialog({ actorId, mode, preset = {}, onClose, closi
 }) {
   const shop = useShop();
   const { notify } = useFeedback();
-  const access = useStockAccess(actorId);
   const activeLocations = shop.stockLocations.filter((l) => l.active);
   const presetRedemption = shop.redemptions.find((r) => r.id === preset.redemptionId);
   const firstReward = preset.rewardId ?? presetRedemption?.rewardId ?? shop.rewards[0]?.id ?? "";
@@ -51,8 +52,10 @@ export function StockMovementDialog({ actorId, mode, preset = {}, onClose, closi
   const [reference, setReference] = useState("");
   const [reason, setReason] = useState("");
   const [redemptionId, setRedemptionId] = useState(preset.redemptionId ?? "");
-  const [refund, setRefund] = useState(false);
   const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const { token } = useStockApi();
+  const mutate = useStockMutation();
 
   const redemption = shop.redemptions.find((r) => r.id === redemptionId);
   const inflow = mode === "receive" || mode === "return" || (mode === "adjust" && direction === "in");
@@ -65,7 +68,8 @@ export function StockMovementDialog({ actorId, mode, preset = {}, onClose, closi
   const linked = mode === "return" && !!redemption;
   // A linked return reuses the batch or serial from the fulfilment, unless it predates tracking.
   const showTracking = !linked || (item.tracking === "batch" && !redemption.batch) || (item.tracking === "serial" && !redemption.serial);
-  const fulfilled = shop.redemptions.filter((r) => r.status === "FULFILLED");
+  // Only redemptions of rewards the API knows can be returned to its ledger.
+  const fulfilled = shop.redemptions.filter((r) => r.status === "FULFILLED" && shop.rewards.some((reward) => reward.id === r.rewardId));
   const today = todayDate();
   const locationChoices = inflow ? activeLocations : shop.stockLocations;
 
@@ -89,19 +93,26 @@ export function StockMovementDialog({ actorId, mode, preset = {}, onClose, closi
       if (r.locationId) setLocationId(r.locationId);
       setBatch(r.batch ?? "");
       setQty(1);
-    } else setRefund(false);
+    }
     setError("");
   };
 
-  const submit = (event: FormEvent) => {
+  const submit = async (event: FormEvent) => {
     event.preventDefault();
-    const line: StockLineInput = { rewardId, variantId, locationId, qty: effectiveQty, batch: batch.trim() || undefined, expiresAt: expiresAt || undefined, serials };
-    const result =
-      mode === "receive" ? shop.receiveStock(actorId, { ...line, source, supplierId, unitCost, reference, note: reason })
-      : mode === "adjust" ? shop.adjustStock(actorId, { ...line, direction, reason })
-      : mode === "transfer" ? shop.transferStock(actorId, { ...line, toLocationId, note: reason })
-      : mode === "writeoff" ? shop.writeOffStock(actorId, { ...line, kind, reason })
-      : shop.returnStock(actorId, { ...line, redemptionId, refundPoints: refund, reason });
+    if (saving) return;
+    // A linked return puts back the batch or serial the redemption was fulfilled from.
+    const line = linked
+      ? { rewardId: redemption.rewardId, variantId: redemption.variantId, locationId, qty: 1, batch: redemption.batch ?? batch.trim(), serials: redemption.serial ? [redemption.serial] : serials }
+      : { rewardId, variantId, locationId, qty: effectiveQty, batch: batch.trim(), expiresAt, serials };
+    const body: StockMovementBody =
+      mode === "receive" ? { ...line, type: mode, source, supplierId, unitCost, reference, reason }
+      : mode === "adjust" ? { ...line, type: mode, direction, reason }
+      : mode === "transfer" ? { ...line, type: mode, toLocationId, reason }
+      : mode === "writeoff" ? { ...line, type: mode, kind, reason }
+      : { ...line, type: mode, reference: redemption?.id ?? "", reason };
+    setSaving(true);
+    const result = await mutate(() => apiRecordStockMovement(token, body));
+    setSaving(false);
     if (result) return setError(result);
     notify(`${titles[mode]} recorded in the stock ledger.`, "success");
     onClose();
@@ -272,13 +283,6 @@ export function StockMovementDialog({ actorId, mode, preset = {}, onClose, closi
           </div>
         )}
 
-        {mode === "return" && (
-          <label className={`flex items-center gap-2 text-sm ${linked && access.can("manager") ? "" : "opacity-50"}`}>
-            <input type="checkbox" checked={refund} disabled={!linked || !access.can("manager")} onChange={(e) => setRefund(e.target.checked)} />
-            Refund {redemption ? `${redemption.points} points` : "points"} to the customer {!access.can("manager") && "(stock manager only)"}
-          </label>
-        )}
-
         <label className="block text-xs">
           {mode === "receive" || mode === "transfer" ? "Note (optional)" : "Reason (required)"}
           <input required={mode !== "receive" && mode !== "transfer"} className={field} value={reason} onChange={(e) => setReason(e.target.value)}
@@ -288,7 +292,7 @@ export function StockMovementDialog({ actorId, mode, preset = {}, onClose, closi
         {error && <p role="alert" className="text-sm text-red-400">{error}</p>}
         <div className="flex justify-end gap-2">
           <button type="button" onClick={onClose} className={secondaryButton}>Cancel</button>
-          <button type="submit" className={primaryButton}>{titles[mode]}</button>
+          <button type="submit" disabled={saving} className={primaryButton}>{saving ? "Saving…" : titles[mode]}</button>
         </div>
       </form>
     </AdminModal>

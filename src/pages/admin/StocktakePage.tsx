@@ -1,5 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { useShop } from "../../data/shop";
+import { apiCancelStocktake, apiCreateStocktake, apiPostStocktake, apiRecordCount } from "../../data/api";
+import { useStockApi, useStockMutation } from "../../data/stockApi";
 import { useFeedback } from "../../components/FeedbackProvider";
 import { AdminModal } from "../../components/AdminModal";
 import { useModalState } from "../../components/useModalState";
@@ -26,19 +28,35 @@ export function AdminStocktakePage({ actorId }: { actorId: string }) {
   const [note, setNote] = useState("");
   const [error, setError] = useState("");
   const [blind, setBlind] = useState(false);
+  const { token, reload } = useStockApi();
+  const mutate = useStockMutation();
   const selected = shop.stocktakes.find((t) => t.id === selectedId);
   const locName = (id: string) => shop.stockLocations.find((l) => l.id === id)?.name ?? id;
   const signedMoney = (n: number) => `${n < 0 ? "−" : n > 0 ? "+" : ""}${shop.money(Math.abs(n))}`;
   const categories = [...new Set(shop.rewards.map((r) => r.category))];
 
-  const create = (event: FormEvent) => {
+  const create = async (event: FormEvent) => {
     event.preventDefault();
-    const result = shop.createStocktake(actorId, locationId, category, note);
-    if (result.error) return setError(result.error);
+    let id = "";
+    const result = await mutate(async () => {
+      id = await apiCreateStocktake(token, locationId, category, note);
+    });
+    if (result) return setError(result);
     setCreating(false);
-    setSelectedId(result.id ?? null);
+    setSelectedId(id);
     setNote("");
-    notify(`Stocktake ${result.id} started. Count each line, then a manager posts it.`, "success");
+    notify(`Stocktake ${id} started. Count each line, then a manager posts it.`, "success");
+  };
+  /** Shows the count at once, then saves it; a failed save is reported and the server's counts reloaded. */
+  const saveCount = (take: Stocktake, index: number, counted: number | null) => {
+    const localError = shop.recordCount(actorId, take.id, index, counted);
+    if (localError) return notify(localError, "error");
+    const lineId = take.lines[index]?.id;
+    if (!lineId) return;
+    apiRecordCount(token, take.id, lineId, counted).catch((failure: Error) => {
+      notify(failure.message, "error");
+      void reload().catch(() => {});
+    });
   };
 
   /** Current system quantity for a line: posted stocktakes keep the figure from posting time. */
@@ -121,10 +139,7 @@ export function AdminStocktakePage({ actorId }: { actorId: string }) {
                             {open && can("clerk") ? (
                               <input type="number" min={0} max={line.serial ? 1 : undefined} step={1} aria-label={`Counted quantity for ${reward?.name ?? line.rewardId} ${line.serial ?? line.batch}`}
                                 className={`${field} ml-auto w-24 text-right font-mono-data`} value={line.counted ?? ""}
-                                onChange={(e) => {
-                                  const result = shop.recordCount(actorId, selected.id, index, e.target.value === "" ? null : Number(e.target.value));
-                                  if (result) notify(result, "error");
-                                }} />
+                                onChange={(e) => saveCount(selected, index, e.target.value === "" ? null : Number(e.target.value))} />
                             ) : <span className="font-mono-data">{line.counted ?? "—"}</span>}
                           </td>
                           {!blind && <>
@@ -146,16 +161,16 @@ export function AdminStocktakePage({ actorId }: { actorId: string }) {
                 {open && (
                   <div className="flex gap-2">
                     <button type="button" disabled={!can("manager")} className={secondaryButton}
-                      onClick={() => void confirm(`Cancel stocktake ${selected.id}? Counts are kept for reference but nothing is posted.`).then((ok) => {
+                      onClick={() => void confirm(`Cancel stocktake ${selected.id}? Counts are kept for reference but nothing is posted.`).then(async (ok) => {
                         if (!ok) return;
-                        const result = shop.cancelStocktake(actorId, selected.id);
+                        const result = await mutate(() => apiCancelStocktake(token, selected.id));
                         notify(result ?? "Stocktake cancelled.", result ? "error" : "success");
                       })}>Cancel count</button>
                     <button type="button" disabled={!can("manager") || counted < rows.length} className={primaryButton}
                       title={can("manager") ? undefined : "Needs stock manager authority"}
-                      onClick={() => void confirm(`Post ${varianceRows.length} variance line${varianceRows.length === 1 ? "" : "s"} to the ledger? On-hand stock at ${locName(selected.locationId)} will match the count.`).then((ok) => {
+                      onClick={() => void confirm(`Post ${varianceRows.length} variance line${varianceRows.length === 1 ? "" : "s"} to the ledger? On-hand stock at ${locName(selected.locationId)} will match the count.`).then(async (ok) => {
                         if (!ok) return;
-                        const result = shop.postStocktake(actorId, selected.id);
+                        const result = await mutate(() => apiPostStocktake(token, selected.id));
                         notify(result ?? "Stocktake posted. Variances recorded in the ledger.", result ? "error" : "success");
                       })}>Post variances</button>
                   </div>

@@ -1,6 +1,7 @@
 import type { LoginRole } from "../components/LoginPage";
 import type { Campaign } from "./shop";
 import type { Badge, LoyaltyTransaction, Product, ProductCategory, Reward } from "./mockData";
+import type { StockItem, StockLocation, StockMovement, StockMovementType, Stocktake, Supplier, Tracking } from "./stock";
 
 /** Laravel API root. Set `VITE_API_URL` to point at another server. */
 const apiUrl = (
@@ -664,4 +665,322 @@ export async function apiAdjustPoints(token: string, customerId: string, points:
 /** The signed-in customer's own points ledger, newest first. */
 export async function apiMyPoints(token: string): Promise<LoyaltyTransaction[]> {
   return (await fetchAll<ApiPointRow>("/points", token)).map(toPointRow);
+}
+
+/* ---------- Reward stock ---------- */
+
+type ApiStockItem = {
+  sku: string;
+  unit_cost: number;
+  supplier_id: number | null;
+  tracking: Tracking;
+  low_stock_threshold: number;
+  reorder_point: number;
+  reorder_qty: number;
+  out_of_stock: "hide" | "disable";
+  allow_backorder: boolean;
+};
+
+type ApiVariant = { id: number; size: string | null; color: string | null; sku: string };
+
+type ApiStockReward = {
+  id: number;
+  name: string;
+  name_kh: string | null;
+  description: string | null;
+  category: string | null;
+  points_cost: number;
+  image_url: string | null;
+  is_active: boolean;
+  min_tier: string | null;
+  stock_item: ApiStockItem;
+  variants: ApiVariant[];
+};
+
+type ApiStockMovement = {
+  id: number;
+  created_at: string;
+  type: StockMovementType;
+  reward_id: number;
+  variant_id: number | null;
+  location_id: number;
+  on_hand_delta: number;
+  reserved_delta: number;
+  batch: string | null;
+  expires_at: string | null;
+  serials: string[] | null;
+  unit_cost: number;
+  supplier_id: number | null;
+  source: "PURCHASE" | "DONATION" | null;
+  reference: string | null;
+  reason: string | null;
+  actor_id: number;
+  actor_name: string | null;
+};
+
+type ApiStocktake = {
+  id: number;
+  reference: string;
+  location_id: number;
+  category: string | null;
+  status: Stocktake["status"];
+  note: string | null;
+  created_at: string;
+  created_by: string | null;
+  posted_at: string | null;
+  posted_by: string | null;
+  lines: {
+    id: number;
+    reward_id: number;
+    variant_id: number | null;
+    batch: string | null;
+    serial: string | null;
+    expected: number;
+    counted: number | null;
+    system_at_post: number | null;
+  }[];
+};
+
+const idOrBlank = (id: number | null | undefined) => (id === null || id === undefined ? "" : String(id));
+/** API ids for the ids the store keeps as strings; blank means none. */
+const apiId = (id: string | undefined) => (id ? Number(id) : null);
+/** Stocktakes are shown by their reference, "ST-000012"; the API addresses them by number. */
+const stocktakeApiId = (id: string) => Number(id.replace(/^ST-/, ""));
+
+/** The store's reward shape for a stock row. */
+const toStockReward = (r: ApiStockReward): Reward => ({
+  id: String(r.id),
+  name: r.name,
+  nameKh: r.name_kh ?? "",
+  description: r.description ?? "",
+  pointsCost: r.points_cost,
+  stock: 0,
+  minTier: r.min_tier ?? "",
+  active: r.is_active,
+  category: r.category ?? "",
+  image: r.image_url ?? "",
+});
+
+const toStockItem = (r: ApiStockReward): StockItem => ({
+  rewardId: String(r.id),
+  sku: r.stock_item.sku,
+  unitCost: r.stock_item.unit_cost,
+  supplierId: idOrBlank(r.stock_item.supplier_id),
+  tracking: r.stock_item.tracking,
+  variants: r.variants.map((v) => ({ id: String(v.id), size: v.size ?? "", color: v.color ?? "", sku: v.sku })),
+  lowStockThreshold: r.stock_item.low_stock_threshold,
+  reorderPoint: r.stock_item.reorder_point,
+  reorderQty: r.stock_item.reorder_qty,
+  outOfStock: r.stock_item.out_of_stock,
+  allowBackorder: r.stock_item.allow_backorder,
+});
+
+const toMovement = (m: ApiStockMovement): StockMovement => ({
+  id: String(m.id),
+  createdAt: m.created_at,
+  type: m.type,
+  rewardId: String(m.reward_id),
+  variantId: idOrBlank(m.variant_id),
+  locationId: String(m.location_id),
+  onHand: m.on_hand_delta,
+  reserved: m.reserved_delta,
+  batch: m.batch ?? undefined,
+  expiresAt: m.expires_at ?? undefined,
+  serials: m.serials ?? undefined,
+  unitCost: m.unit_cost,
+  supplierId: m.supplier_id === null ? undefined : String(m.supplier_id),
+  source: m.source ?? undefined,
+  reference: m.reference ?? undefined,
+  reason: m.reason ?? undefined,
+  // Matches the staff user ids `linkApiAdmin` gives API accounts.
+  actorId: `api-admin-${m.actor_id}`,
+  actorName: m.actor_name ?? "Staff",
+});
+
+const toStocktake = (t: ApiStocktake): Stocktake => ({
+  id: t.reference,
+  locationId: String(t.location_id),
+  category: t.category ?? "",
+  status: t.status,
+  note: t.note ?? "",
+  createdAt: t.created_at,
+  createdBy: t.created_by ?? "Staff",
+  postedAt: t.posted_at ?? undefined,
+  postedBy: t.posted_by ?? undefined,
+  lines: t.lines.map((l) => ({
+    id: String(l.id),
+    rewardId: String(l.reward_id),
+    variantId: idOrBlank(l.variant_id),
+    batch: l.batch ?? "",
+    serial: l.serial ?? undefined,
+    expected: l.expected,
+    counted: l.counted,
+    systemAtPost: l.system_at_post ?? undefined,
+  })),
+});
+
+/** Everything the inventory pages work from, in the store's shapes. */
+export type StockSnapshot = {
+  rewards: Reward[];
+  stockItems: Record<string, StockItem>;
+  stockLocations: StockLocation[];
+  suppliers: Supplier[];
+  stockMovements: StockMovement[];
+  stocktakes: Stocktake[];
+};
+
+/** Loads the stock rewards and rules, locations, suppliers, the ledger (newest first) and stocktakes. */
+export async function apiStock(token: string): Promise<StockSnapshot> {
+  const { data } = await request<{
+    data: {
+      rewards: ApiStockReward[];
+      locations: { id: number; name: string; name_kh: string | null; type: StockLocation["type"]; is_active: boolean }[];
+      suppliers: { id: number; name: string; kind: Supplier["kind"]; contact_name: string | null; phone: string | null; email: string | null; is_active: boolean }[];
+      movements: ApiStockMovement[];
+      stocktakes: ApiStocktake[];
+    };
+  }>("/backend/stock", { token });
+  return {
+    rewards: data.rewards.map(toStockReward),
+    stockItems: Object.fromEntries(data.rewards.map((r) => [String(r.id), toStockItem(r)])),
+    stockLocations: data.locations.map((l) => ({ id: String(l.id), name: l.name, nameKh: l.name_kh ?? "", type: l.type, active: l.is_active })),
+    suppliers: data.suppliers.map((s) => ({
+      id: String(s.id), name: s.name, kind: s.kind, contact: s.contact_name ?? "", phone: s.phone ?? "", email: s.email ?? "", active: s.is_active,
+    })),
+    stockMovements: data.movements.map(toMovement),
+    stocktakes: data.stocktakes.map(toStocktake),
+  };
+}
+
+/** Filters of the movements table, by API id. */
+export type StockMovementFilters = { from?: string; to?: string; type?: string; location_id?: string; reward_id?: string; actor_id?: string };
+
+/** One page of the stock ledger, with the net on-hand change of every matching entry. */
+export async function apiStockMovementPage(token: string, query: PageQuery & StockMovementFilters): Promise<ApiPage<StockMovement> & { netOnHand: number }> {
+  const { data, meta, net_on_hand } = (await fetchPage<ApiStockMovement>("/backend/stock-movements", token, query)) as {
+    data: ApiStockMovement[];
+    meta: PageMeta;
+    net_on_hand: number;
+  };
+  return { rows: data.map(toMovement), meta, netOnHand: net_on_hand };
+}
+
+/** The shared fields of every stock form, plus the fields of the form being sent. */
+export type StockMovementBody = {
+  type: "receive" | "adjust" | "transfer" | "writeoff" | "return";
+  rewardId: string;
+  variantId: string;
+  locationId: string;
+  qty: number;
+  batch?: string;
+  expiresAt?: string;
+  serials?: string[];
+} & Partial<{
+  source: "PURCHASE" | "DONATION";
+  supplierId: string;
+  unitCost: number;
+  reference: string;
+  reason: string;
+  direction: "in" | "out";
+  toLocationId: string;
+  kind: "DAMAGE" | "LOSS" | "EXPIRY";
+}>;
+
+/** Records a receive, adjustment, transfer, write-off or return in the ledger. */
+export async function apiRecordStockMovement(token: string, body: StockMovementBody) {
+  await request("/backend/stock-movements", {
+    method: "POST",
+    token,
+    body: {
+      type: body.type,
+      reward_id: Number(body.rewardId),
+      variant_id: apiId(body.variantId),
+      location_id: Number(body.locationId),
+      quantity: body.qty,
+      batch: body.batch || null,
+      expires_at: body.expiresAt || null,
+      serials: body.serials?.length ? body.serials : null,
+      ...(body.source !== undefined && { source: body.source }),
+      ...(body.supplierId !== undefined && { supplier_id: apiId(body.supplierId) }),
+      ...(body.unitCost !== undefined && { unit_cost: body.unitCost }),
+      ...(body.reference !== undefined && { reference: body.reference || null }),
+      ...(body.reason !== undefined && { reason: body.reason || null }),
+      ...(body.direction !== undefined && { direction: body.direction }),
+      ...(body.toLocationId !== undefined && { to_location_id: Number(body.toLocationId) }),
+      ...(body.kind !== undefined && { kind: body.kind }),
+    },
+  });
+}
+
+/** Saves a reward's stock rules and variants. Variants the API has not stored yet are sent without an id. */
+export async function apiSaveStockItem(token: string, item: StockItem) {
+  await request(`/backend/stock-items/${item.rewardId}`, {
+    method: "PUT",
+    token,
+    body: {
+      sku: item.sku,
+      unit_cost: item.unitCost,
+      supplier_id: apiId(item.supplierId),
+      tracking: item.tracking,
+      low_stock_threshold: item.lowStockThreshold,
+      reorder_point: item.reorderPoint,
+      reorder_qty: item.reorderQty,
+      out_of_stock: item.outOfStock,
+      allow_backorder: item.allowBackorder,
+      variants: item.variants.map((v) => ({
+        ...(/^\d+$/.test(v.id) && { id: Number(v.id) }),
+        size: v.size,
+        color: v.color,
+        sku: v.sku,
+      })),
+    },
+  });
+}
+
+/** Creates the location when it has no id yet; otherwise updates it. */
+export async function apiSaveStockLocation(token: string, location: StockLocation) {
+  await request(location.id ? `/backend/stock-locations/${location.id}` : "/backend/stock-locations", {
+    method: location.id ? "PATCH" : "POST",
+    token,
+    body: { name: location.name, name_kh: location.nameKh || null, type: location.type, is_active: location.active },
+  });
+}
+
+/** Creates the supplier or partner when it has no id yet; otherwise updates it. */
+export async function apiSaveSupplier(token: string, supplier: Supplier) {
+  await request(supplier.id ? `/backend/suppliers/${supplier.id}` : "/backend/suppliers", {
+    method: supplier.id ? "PATCH" : "POST",
+    token,
+    body: {
+      name: supplier.name,
+      kind: supplier.kind,
+      contact_name: supplier.contact,
+      phone: supplier.phone,
+      email: supplier.email,
+      is_active: supplier.active,
+    },
+  });
+}
+
+/** Starts a count at a location. Returns the new stocktake's id (its reference). */
+export async function apiCreateStocktake(token: string, locationId: string, category: string, note: string) {
+  const { data } = await request<{ data: ApiStocktake }>("/backend/stocktakes", {
+    method: "POST",
+    token,
+    body: { location_id: Number(locationId), category: category || null, note: note || null },
+  });
+  return data.reference;
+}
+
+/** Records or clears one line's count. */
+export async function apiRecordCount(token: string, stocktakeId: string, lineId: string, counted: number | null) {
+  await request(`/backend/stocktakes/${stocktakeApiId(stocktakeId)}/lines/${lineId}`, { method: "PATCH", token, body: { counted } });
+}
+
+export async function apiPostStocktake(token: string, stocktakeId: string) {
+  await request(`/backend/stocktakes/${stocktakeApiId(stocktakeId)}/post`, { method: "POST", token });
+}
+
+export async function apiCancelStocktake(token: string, stocktakeId: string) {
+  await request(`/backend/stocktakes/${stocktakeApiId(stocktakeId)}/cancel`, { method: "POST", token });
 }

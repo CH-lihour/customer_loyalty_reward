@@ -11,7 +11,8 @@ import { CustomerLayout } from "./components/CustomerLayout";
 import { AddToCartDialog } from "./components/AddToCartDialog";
 import { useModalState } from "./components/useModalState";
 import { AdminLayout, type AdminPage } from "./components/AdminLayout";
-import { adminPages, type AdminRole } from "./data/adminAccess";
+import { adminPages, inventoryPages, type AdminRole } from "./data/adminAccess";
+import { StockApiProvider } from "./data/stockApi";
 import {
   ApiError,
   apiLogin,
@@ -565,22 +566,26 @@ export default function App() {
           <AdminBadgesPage actorId={adminUser.id} token={session.token} />
         )}
         {adminPage === "referrals" && <AdminReferralsPage />}
-        {adminPage === "stock-alerts" && (
-          <AdminStockAlertsPage actorId={adminUser.id} onNav={navigateAdmin} />
-        )}
-        {adminPage === "stock" && <AdminStockPage actorId={adminUser.id} />}
-        {adminPage === "stock-movements" && (
-          <AdminStockMovementsPage actorId={adminUser.id} />
-        )}
-        {adminPage === "fulfillment" && (
-          <AdminFulfillmentPage actorId={adminUser.id} />
-        )}
-        {adminPage === "stocktake" && (
-          <AdminStocktakePage actorId={adminUser.id} />
-        )}
-        {adminPage === "stock-reports" && <AdminStockReportsPage />}
-        {adminPage === "suppliers" && (
-          <AdminSuppliersPage actorId={adminUser.id} />
+        {inventoryPages.includes(adminPage) && (
+          <StockApiProvider token={session.token}>
+            {adminPage === "stock-alerts" && (
+              <AdminStockAlertsPage actorId={adminUser.id} onNav={navigateAdmin} />
+            )}
+            {adminPage === "stock" && <AdminStockPage actorId={adminUser.id} />}
+            {adminPage === "stock-movements" && (
+              <AdminStockMovementsPage actorId={adminUser.id} />
+            )}
+            {adminPage === "fulfillment" && (
+              <AdminFulfillmentPage actorId={adminUser.id} />
+            )}
+            {adminPage === "stocktake" && (
+              <AdminStocktakePage actorId={adminUser.id} />
+            )}
+            {adminPage === "stock-reports" && <AdminStockReportsPage />}
+            {adminPage === "suppliers" && (
+              <AdminSuppliersPage actorId={adminUser.id} />
+            )}
+          </StockApiProvider>
         )}
         {adminPage === "logs" && <AdminActivityLogsPage />}
         {adminPage === "analytics" && <AdminAnalyticsPage />}
