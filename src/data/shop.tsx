@@ -31,7 +31,7 @@ import {
 } from "./mockData";
 import { extraCustomers, extraProducts } from "./seedExtras";
 import { meetsTier, tierFor, tierRule, type TierTable } from "./tiers";
-import type { ApiProfile, ApiRole, StockSnapshot } from "./api";
+import type { Account, ApiProfile, ApiRole, CustomerRecord, ReportTotals, StockSnapshot } from "./api";
 import {
   adminPages,
   defaultAdminRoleLabels,
@@ -78,7 +78,10 @@ export type CartItem = { productId: string; qty: number };
 export type Referral = {
   id: string;
   referrerId: string;
+  referrerName?: string;
   customerId: string;
+  /** Sent by the API, since a customer's own view does not hold other customers. */
+  customerName?: string;
   completed: boolean;
   createdAt: string;
 };
@@ -155,6 +158,10 @@ type State = {
   restockRequests: RestockRequest[];
   stockSettings: StockSettings;
   stockAuthority: Record<AdminRole, "clerk" | "manager">;
+  /** Units the API says are available by "reward|variant", for visitors who cannot read the ledger. */
+  rewardAvailability: Record<string, number>;
+  /** Dashboard totals from the API; absent until a staff user with a dashboard loads them. */
+  reportTotals: ReportTotals | null;
 };
 
 /** Fields shared by every stock form: what, which variant, where, and how many. */
@@ -224,6 +231,8 @@ const initial: State = {
   restockRequests: stockSeed.restockRequests,
   stockSettings: stockSettingsDefault,
   stockAuthority: defaultStockAuthority,
+  rewardAvailability: {},
+  reportTotals: null,
 };
 const key = "khmershop-frontend-v1";
 const redemptionStatuses: RedemptionStatus[] = ["RESERVED", "BACKORDERED", "FULFILLED", "CANCELLED", "EXPIRED", "RETURNED"];
@@ -703,15 +712,6 @@ const refundPoints = (s: State, redemption: Redemption, reason: string): State =
     logs: log(s, user, "POINTS_REFUNDED", `Refunded ${redemption.points} points for ${redemption.rewardName} (${reason})`),
   };
 };
-const expireReservations = (s: State): State => {
-  const cutoff = now();
-  const expired = s.redemptions.filter((r) => r.status === "RESERVED" && r.reservedUntil && r.reservedUntil < cutoff);
-  if (!expired.length) return s;
-  return settleStock(expired.reduce(
-    (next, redemption) => closeRedemption(next, redemption, "EXPIRED", "Reservation timed out", systemActor),
-    s,
-  ));
-};
 
 type Shop = State & {
   setCustomerActive: (actorId: string, userId: string, active: boolean) => string | null;
@@ -729,14 +729,23 @@ type Shop = State & {
   checkout: (address: string, phone: string) => string | null;
   updateOrderStatus: (id: string, status: OrderStatus) => void;
   redeem: (id: string, variantId?: string) => string | null;
+  /** Replaces a signed-in customer's profile and records with the API's. `points` are their ledger rows. */
+  syncAccount: (userId: string, account: Account, points: LoyaltyTransaction[]) => void;
+  /** Replaces every customer with the ones loaded from the API, for staff. */
+  syncCustomers: (records: CustomerRecord[]) => void;
+  /** Replaces every order with the ones loaded from the API, for staff. */
+  syncOrders: (orders: Order[]) => void;
+  /** Replaces every referral with the ones loaded from the API, for staff. */
+  syncReferrals: (referrals: Referral[]) => void;
+  /** Replaces the activity log with the entries loaded from the API, for staff. */
+  syncLogs: (logs: LogEntry[]) => void;
+  syncReportTotals: (totals: ReportTotals) => void;
+  /** Sets reward stock rules and what is available, for visitors who cannot read the ledger. */
+  syncRewardStock: (stockItems: Record<string, StockItem>, availability: Record<string, number>) => void;
+  syncExchangeRate: (rate: number) => void;
   /**
-   * Brings a signed-in customer's balance, tier progress and history up to date with the API's ledger.
-   * `rows` are their API ledger rows; activity recorded only in this browser is kept alongside them.
-   */
-  syncCustomerPoints: (userId: string, balance: number, qualifying: number, rows: LoyaltyTransaction[]) => void;
-  /**
-   * Replaces the catalog with the one loaded from the API. `stock` overrides counts by product id;
-   * other products keep the count the store already has. Cart lines for removed products are dropped.
+   * Replaces the catalog with the one loaded from the API. `stock` overrides counts by product id.
+   * Cart lines for removed products are dropped.
    */
   syncCatalog: (categories: ProductCategory[], products: Product[], stock?: Record<string, number>) => void;
   /**
@@ -866,12 +875,6 @@ export function ShopProvider({ children }: { children: ReactNode }) {
     window.addEventListener("storage", onStorage);
     return () => window.removeEventListener("storage", onStorage);
   }, []);
-  useEffect(() => {
-    const tick = () => setState(expireReservations);
-    tick();
-    const timer = window.setInterval(tick, 30000);
-    return () => window.clearInterval(timer);
-  }, [setState]);
   const stockLevels = useMemo(() => computeLevels(state.stockMovements), [state.stockMovements]);
   const currentUser =
     state.customers.find((c) => c.id === state.currentUserId) ??
@@ -1258,8 +1261,14 @@ export function ShopProvider({ children }: { children: ReactNode }) {
       dismissRestock: (id) =>
         setState((s) => ({ ...s, restockRequests: s.restockRequests.filter((r) => !(r.id === id && r.userId === s.currentUserId)) })),
       stockLevels,
-      availableFor: (rewardId, variantId) =>
-        totalsFor(stockLevels, { rewardId, variantId, locationIds: activeLocationIds(state) }).available,
+      availableFor: (rewardId, variantId) => {
+        const known = Object.entries(state.rewardAvailability).filter(([key]) =>
+          variantId === undefined ? key.startsWith(`${rewardId}|`) : key === `${rewardId}|${variantId}`,
+        );
+        return known.length
+          ? known.reduce((sum, [, units]) => sum + units, 0)
+          : totalsFor(stockLevels, { rewardId, variantId, locationIds: activeLocationIds(state) }).available;
+      },
       stockItemFor: (rewardId) => stockItemOf(state, rewardId),
       stockAuthorityOf: (actorId) => {
         const actor = state.adminUsers.find((user) => user.id === actorId && user.active);
@@ -1597,41 +1606,53 @@ export function ShopProvider({ children }: { children: ReactNode }) {
             logs: staffLog(s, actor, "STOCKTAKE_CANCELLED", `Cancelled stocktake ${id}`),
           };
         }),
-      syncCustomerPoints: (userId, balance, qualifying, rows) =>
+      syncAccount: (userId, account, points) =>
         setState((s) => {
-          const user = s.customers.find((c) => c.id === userId);
-          if (!user) return s;
-          const local = s.transactions.filter((t) => t.userId === userId && !t.id.startsWith("api-"));
-          const history = [
-            ...rows.map((t) => ({ ...t, id: `api-${t.id}`, userId, userName: user.name })),
-            ...local,
-          ].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-          // Activity only this browser knows about (demo orders, redemptions) stays on top of the API's numbers.
-          const points = Math.max(0, balance + local.reduce((sum, t) => sum + t.points, 0));
-          const earned = qualifying + local.filter((t) => t.type === "EARN").reduce((sum, t) => sum + t.points, 0);
-          const override = s.tierOverrides[userId];
-          const tier = override && s.tiers[override] ? override : tierFor(earned, s.tiers);
-          const mine = s.transactions.filter((t) => t.userId === userId);
-          if (
-            points === user.points &&
-            tier === user.tier &&
-            earned === s.qualifyingPoints[userId] &&
-            JSON.stringify(history) === JSON.stringify(mine)
-          )
-            return s;
+          if (!s.customers.some((c) => c.id === userId)) return s;
+          const { customer, qualifyingPoints, tierLocked } = account.record;
           return {
             ...s,
-            customers: s.customers.map((c) => (c.id === userId ? { ...c, points, tier } : c)),
-            qualifyingPoints: { ...s.qualifyingPoints, [userId]: earned },
-            transactions: [...history, ...s.transactions.filter((t) => t.userId !== userId)],
+            customers: s.customers.map((c) => (c.id === userId ? { ...customer, id: userId } : c)),
+            qualifyingPoints: { ...s.qualifyingPoints, [userId]: qualifyingPoints },
+            tierOverrides: { ...s.tierOverrides, [userId]: tierLocked ? customer.tier : undefined },
+            orders: [...account.orders.map((o) => ({ ...o, customerId: userId })), ...s.orders.filter((o) => o.customerId !== userId)],
+            redemptions: [...account.redemptions.map((r) => ({ ...r, userId })), ...s.redemptions.filter((r) => r.userId !== userId)],
+            restockRequests: [...account.restockRequests.map((r) => ({ ...r, userId })), ...s.restockRequests.filter((r) => r.userId !== userId)],
+            referrals: [...account.referrals.map((r) => ({ ...r, referrerId: userId })), ...s.referrals.filter((r) => r.referrerId !== userId)],
+            tierHistory: [...account.tierHistory.map((t) => ({ ...t, userId })), ...s.tierHistory.filter((t) => t.userId !== userId)],
+            transactions: [
+              ...points.map((t) => ({ ...t, id: `api-${t.id}`, userId, userName: customer.name })),
+              ...s.transactions.filter((t) => t.userId !== userId),
+            ],
           };
         }),
+      syncCustomers: (records) =>
+        setState((s) =>
+          records.length
+            ? {
+                ...s,
+                customers: records.map((r) => r.customer),
+                qualifyingPoints: Object.fromEntries(records.map((r) => [r.customer.id, r.qualifyingPoints])),
+                tierOverrides: Object.fromEntries(records.filter((r) => r.tierLocked).map((r) => [r.customer.id, r.customer.tier])),
+                disabledCustomerIds: records.filter((r) => !r.active).map((r) => r.customer.id),
+              }
+            : s,
+        ),
+      syncOrders: (orders) => setState((s) => ({ ...s, orders })),
+      syncReferrals: (referrals) => setState((s) => ({ ...s, referrals })),
+      syncLogs: (logs) => setState((s) => ({ ...s, logs })),
+      syncReportTotals: (reportTotals) => setState((s) => ({ ...s, reportTotals })),
+      syncRewardStock: (stockItems, availability) =>
+        setState((s) => ({ ...s, stockItems: { ...s.stockItems, ...stockItems }, rewardAvailability: availability })),
+      syncExchangeRate: (exchangeRate) => setState((s) => ({ ...s, exchangeRate })),
       syncStock: (snapshot) =>
         setState((s) => {
           const saved = new Map(s.rewards.flatMap((r) => [[r.id, r], [r.name.toLowerCase(), r]] as const));
           return {
             ...s,
             ...snapshot,
+            // The full ledger is loaded, so levels replayed from it are the live ones.
+            rewardAvailability: {},
             // The snapshot has no expiry and may have no image, so those stay as the store knows them.
             rewards: snapshot.rewards.map((r) => {
               const known = saved.get(r.id) ?? saved.get(r.name.toLowerCase());
@@ -1641,13 +1662,7 @@ export function ShopProvider({ children }: { children: ReactNode }) {
         }),
       syncCatalog: (categories, products, stock = {}) =>
         setState((s) => {
-          // Stock is not in the API: keep the store's count, matching by id, then by name for seeded products.
-          const byId = new Map(s.products.map((p) => [p.id, p.stock]));
-          const byName = new Map(s.products.map((p) => [p.name.toLowerCase(), p.stock]));
-          const next = products.map((p) => ({
-            ...p,
-            stock: stock[p.id] ?? byId.get(p.id) ?? byName.get(p.name.toLowerCase()) ?? 0,
-          }));
+          const next = products.map((p) => ({ ...p, stock: stock[p.id] ?? p.stock }));
           const ids = new Set(next.map((p) => p.id));
           return { ...s, categories, products: next, cart: s.cart.filter((c) => ids.has(c.productId)) };
         }),

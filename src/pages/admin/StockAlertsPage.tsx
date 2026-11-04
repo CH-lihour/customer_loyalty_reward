@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { useShop } from "../../data/shop";
+import { apiSaveStockSettings } from "../../data/api";
+import { useStockApi, useStockMutation } from "../../data/stockApi";
 import { useFeedback } from "../../components/FeedbackProvider";
 import { useModalState } from "../../components/useModalState";
 import { TablePagination, usePagedRows } from "../../components/TablePagination";
@@ -13,6 +15,8 @@ export function AdminStockAlertsPage({ actorId, onNav }: { actorId: string; onNa
   const shop = useShop();
   const { notify } = useFeedback();
   const { can } = useStockAccess(actorId);
+  const { token } = useStockApi();
+  const mutate = useStockMutation();
   const [dialog, setDialog, dialogClosing] = useModalState<{ mode: StockFormMode; preset?: StockFormPreset } | null>(null);
   const [hours, setHours] = useState(shop.stockSettings.reservationHours);
   const today = todayDate();
@@ -41,8 +45,8 @@ export function AdminStockAlertsPage({ actorId, onNav }: { actorId: string; onNa
   const attentionTable = usePagedRows(attention);
   const batchTable = usePagedRows(batches);
 
-  const saveHours = () => {
-    const error = shop.saveStockSettings(actorId, { reservationHours: hours });
+  const saveHours = async () => {
+    const error = await mutate(() => apiSaveStockSettings(token, hours));
     notify(error ?? `Reservations now hold stock for ${hours} hours.`, error ? "error" : "success");
   };
 

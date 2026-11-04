@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { AdminModal } from "./AdminModal";
 import { useFeedback } from "./FeedbackProvider";
-import { field, primaryButton, secondaryButton } from "./StockUi";
+import { field, primaryButton, secondaryButton, useStockAccess } from "./StockUi";
 import { useShop } from "../data/shop";
 import { apiRecordStockMovement, type StockMovementBody } from "../data/api";
 import { useStockApi, useStockMutation } from "../data/stockApi";
@@ -52,9 +52,11 @@ export function StockMovementDialog({ actorId, mode, preset = {}, onClose, closi
   const [reference, setReference] = useState("");
   const [reason, setReason] = useState("");
   const [redemptionId, setRedemptionId] = useState(preset.redemptionId ?? "");
+  const [refund, setRefund] = useState(false);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const { token } = useStockApi();
+  const access = useStockAccess(actorId);
   const mutate = useStockMutation();
 
   const redemption = shop.redemptions.find((r) => r.id === redemptionId);
@@ -109,7 +111,7 @@ export function StockMovementDialog({ actorId, mode, preset = {}, onClose, closi
       : mode === "adjust" ? { ...line, type: mode, direction, reason }
       : mode === "transfer" ? { ...line, type: mode, toLocationId, reason }
       : mode === "writeoff" ? { ...line, type: mode, kind, reason }
-      : { ...line, type: mode, reference: redemption?.id ?? "", reason };
+      : { ...line, type: mode, reference: "", redemptionId: redemption?.id, refundPoints: linked && refund, reason };
     setSaving(true);
     const result = await mutate(() => apiRecordStockMovement(token, body));
     setSaving(false);
@@ -281,6 +283,13 @@ export function StockMovementDialog({ actorId, mode, preset = {}, onClose, closi
               <input className={field} value={reference} onChange={(e) => setReference(e.target.value)} placeholder="PO-2026-120" />
             </label>
           </div>
+        )}
+
+        {mode === "return" && (
+          <label className={`flex items-center gap-2 text-sm ${linked && access.can("manager") ? "" : "opacity-50"}`}>
+            <input type="checkbox" checked={linked && refund} disabled={!linked || !access.can("manager")} onChange={(e) => setRefund(e.target.checked)} />
+            Refund {redemption ? `${redemption.points} points` : "points"} to the customer {!access.can("manager") && "(stock manager only)"}
+          </label>
         )}
 
         <label className="block text-xs">

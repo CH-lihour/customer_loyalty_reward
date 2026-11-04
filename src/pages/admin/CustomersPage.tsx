@@ -1,5 +1,6 @@
 import { useState } from "react"
 import { useShop } from "../../data/shop"
+import { apiOverrideTier } from "../../data/api"
 import { useFeedback } from "../../components/FeedbackProvider"
 import type { Tier } from "../../data/mockData"
 import { tierOrder } from "../../data/tiers"
@@ -20,8 +21,8 @@ const riskLabel = (lastOrder: string) => {
   return { label: "High Risk", color: "text-red-400 bg-red-400/10" }
 }
 
-export function AdminCustomersPage() {
-  const { customers, tiers, tierOverrides, overrideTier } = useShop()
+export function AdminCustomersPage({ token, onChanged }: { token: string; onChanged: () => Promise<void> }) {
+  const { customers, tiers, tierOverrides } = useShop()
   const { notify } = useFeedback()
   const [search, setSearch] = useState("")
   const [tierFilter, setTierFilter] = useState("All")
@@ -160,17 +161,24 @@ export function AdminCustomersPage() {
         >
           <form
             className="space-y-4"
-            onSubmit={(event) => {
+            onSubmit={async (event) => {
               event.preventDefault()
               if (!reason.trim()) {
                 notify("Enter a reason for the tier change.", "error")
                 return
               }
-              overrideTier(
-                editingCustomer.id,
-                selectedTier === "Auto" ? undefined : selectedTier as Tier,
-                reason.trim(),
-              )
+              try {
+                await apiOverrideTier(
+                  token,
+                  editingCustomer.id,
+                  selectedTier === "Auto" ? null : selectedTier as Tier,
+                  reason.trim(),
+                )
+              } catch (failure) {
+                notify((failure as Error).message, "error")
+                return
+              }
+              await onChanged().catch(() => {})
               notify(`${editingCustomer.name}'s tier updated.`, "success")
               setEditingId(null)
             }}

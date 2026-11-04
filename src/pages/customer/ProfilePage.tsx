@@ -1,5 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { useShop } from '../../data/shop';
+import { useAccountMutation } from '../../data/accountApi';
+import { apiUpdateProfile } from '../../data/api';
 import { useFeedback } from '../../components/FeedbackProvider';
 import { TierBadge } from '../../components/TierBadge';
 import { Icon } from '../../components/Icon';
@@ -10,6 +12,7 @@ const field = 'w-full rounded-lg border border-[var(--border)] bg-[var(--seconda
 export function ProfilePage() {
   const shop = useShop();
   const { notify } = useFeedback();
+  const run = useAccountMutation();
   const user = shop.currentUser;
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(user.name);
@@ -24,14 +27,19 @@ export function ProfilePage() {
     setError('');
     setEditing(true);
   };
-  const save = (event: FormEvent<HTMLFormElement>) => {
+  const save = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!name.trim() || !/^\+?\d[\d\s-]{7,14}$/.test(phone)) {
       setError('Enter a name and valid phone number.');
       notify('Enter a name and valid phone number.', 'error');
       return;
     }
-    shop.updateProfile({ name: name.trim(), phone: phone.trim(), province });
+    const failure = await run((token) => apiUpdateProfile(token, { name: name.trim(), phone: phone.trim(), province }));
+    if (failure) {
+      setError(failure);
+      notify(failure, 'error');
+      return;
+    }
     setEditing(false);
     setError('');
     notify('Profile updated.', 'success');

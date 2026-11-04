@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { useShop } from "../../data/shop";
+import { apiCancelRedemption, apiExtendReservation, apiFulfillRedemption } from "../../data/api";
+import { useStockApi, useStockMutation } from "../../data/stockApi";
 import { useFeedback } from "../../components/FeedbackProvider";
 import { useModalState } from "../../components/useModalState";
 import { TablePagination, usePagedRows } from "../../components/TablePagination";
@@ -20,6 +22,8 @@ const linkButton = "text-xs font-medium hover:underline disabled:cursor-not-allo
 
 export function AdminFulfillmentPage({ actorId }: { actorId: string }) {
   const shop = useShop();
+  const { token } = useStockApi();
+  const mutate = useStockMutation();
   const { notify, prompt } = useFeedback();
   const { can } = useStockAccess(actorId);
   const [tab, setTab] = useState<Tab>("reserved");
@@ -49,13 +53,16 @@ export function AdminFulfillmentPage({ actorId }: { actorId: string }) {
     { id: "history", label: "History", count: history.length },
   ];
 
-  const run = (result: string | null, success: string) => notify(result ?? success, result ? "error" : "success");
+  const run = async (change: () => Promise<unknown>, success: string) => {
+    const result = await mutate(change);
+    notify(result ?? success, result ? "error" : "success");
+  };
   const fulfil = (r: Redemption, method: "SHIPPED" | "PICKED_UP") =>
-    run(shop.fulfillRedemption(actorId, r.id, method, serialChoice[r.id]), `${r.rewardName} marked ${method === "SHIPPED" ? "shipped" : "picked up"}.`);
+    void run(() => apiFulfillRedemption(token, r.id, method, serialChoice[r.id]), `${r.rewardName} marked ${method === "SHIPPED" ? "shipped" : "picked up"}.`);
   const cancel = async (r: Redemption) => {
     const reason = await prompt(`Cancel ${r.rewardName} for ${customer(r.userId)}? The reserved stock is released and ${r.points} points are refunded. Enter a reason:`);
     if (reason === null) return;
-    run(shop.cancelRedemption(actorId, r.id, reason), "Redemption cancelled and points refunded.");
+    await run(() => apiCancelRedemption(token, r.id, reason), "Redemption cancelled and points refunded.");
   };
 
   return (
@@ -109,7 +116,7 @@ export function AdminFulfillmentPage({ actorId }: { actorId: string }) {
                       <div className="flex flex-wrap justify-end gap-3">
                         <button type="button" disabled={!can("clerk")} onClick={() => fulfil(r, "SHIPPED")} className={`${linkButton} text-[var(--gold-mid)]`}>Ship</button>
                         <button type="button" disabled={!can("clerk")} onClick={() => fulfil(r, "PICKED_UP")} className={`${linkButton} text-[var(--gold-mid)]`}>Picked up</button>
-                        <button type="button" disabled={!can("clerk")} onClick={() => run(shop.extendReservation(actorId, r.id, 24), "Reservation extended by 24 hours.")} className={linkButton}>+24h</button>
+                        <button type="button" disabled={!can("clerk")} onClick={() => void run(() => apiExtendReservation(token, r.id, 24), "Reservation extended by 24 hours.")} className={linkButton}>+24h</button>
                         <button type="button" disabled={!can("manager")} title={can("manager") ? undefined : "Needs stock manager authority"} onClick={() => void cancel(r)} className={`${linkButton} text-red-400`}>Cancel</button>
                       </div>
                     </td>

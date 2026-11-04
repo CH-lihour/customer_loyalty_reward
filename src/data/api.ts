@@ -1,7 +1,8 @@
 import type { LoginRole } from "../components/LoginPage";
-import type { Campaign } from "./shop";
-import type { Badge, LoyaltyTransaction, Product, ProductCategory, Reward } from "./mockData";
-import type { StockItem, StockLocation, StockMovement, StockMovementType, Stocktake, Supplier, Tracking } from "./stock";
+import type { Campaign, CartItem, LogEntry, Referral, TierChange } from "./shop";
+import type { Badge, Customer, LoyaltyTransaction, Order, OrderStatus, Product, ProductCategory, Reward } from "./mockData";
+import type { Redemption, RestockRequest, StockItem, StockLocation, StockMovement, StockMovementType, Stocktake, Supplier, Tracking } from "./stock";
+import type { TierTable } from "./tiers";
 
 /** Laravel API root. Set `VITE_API_URL` to point at another server. */
 const apiUrl = (
@@ -144,6 +145,7 @@ type ApiProduct = {
   images: { id: number; url: string }[];
   // Laravel serializes decimal columns as strings.
   price: string;
+  stock: number;
   normal_points: number;
   bonus_multiplier: string;
   is_featured: boolean;
@@ -166,7 +168,7 @@ const toProduct = (p: ApiProduct): Product => ({
   nameKh: p.name_kh ?? "",
   category: p.category?.name ?? "",
   price: Number(p.price),
-  stock: 0,
+  stock: p.stock ?? 0,
   images: (p.images ?? []).map(({ id, url }) => ({ id, url })),
   description: p.description ?? "",
   normalPoints: p.normal_points,
@@ -263,6 +265,7 @@ export async function apiSaveProduct(
   form.append("normal_points", String(product.normalPoints));
   form.append("bonus_multiplier", String(product.bonusMultiplier));
   form.append("is_featured", product.featured ? "1" : "0");
+  form.append("stock", String(Math.max(0, Math.floor(product.stock))));
   newImages.forEach((file) => form.append("images[]", file));
   removeImageIds.forEach((id) => form.append("remove_image_ids[]", String(id)));
 
@@ -827,6 +830,9 @@ export type StockSnapshot = {
   suppliers: Supplier[];
   stockMovements: StockMovement[];
   stocktakes: Stocktake[];
+  redemptions: Redemption[];
+  restockRequests: RestockRequest[];
+  stockSettings: { reservationHours: number };
 };
 
 /** Loads the stock rewards and rules, locations, suppliers, the ledger (newest first) and stocktakes. */
@@ -838,6 +844,9 @@ export async function apiStock(token: string): Promise<StockSnapshot> {
       suppliers: { id: number; name: string; kind: Supplier["kind"]; contact_name: string | null; phone: string | null; email: string | null; is_active: boolean }[];
       movements: ApiStockMovement[];
       stocktakes: ApiStocktake[];
+      redemptions: ApiRedemption[];
+      restock_requests: ApiRestockRequest[];
+      reservation_hours: number;
     };
   }>("/backend/stock", { token });
   return {
@@ -849,6 +858,9 @@ export async function apiStock(token: string): Promise<StockSnapshot> {
     })),
     stockMovements: data.movements.map(toMovement),
     stocktakes: data.stocktakes.map(toStocktake),
+    redemptions: data.redemptions.map(toRedemption),
+    restockRequests: data.restock_requests.map(toRestockRequest),
+    stockSettings: { reservationHours: data.reservation_hours },
   };
 }
 
@@ -884,6 +896,9 @@ export type StockMovementBody = {
   direction: "in" | "out";
   toLocationId: string;
   kind: "DAMAGE" | "LOSS" | "EXPIRY";
+  /** A return of this fulfilled redemption, which closes it. */
+  redemptionId: string;
+  refundPoints: boolean;
 }>;
 
 /** Records a receive, adjustment, transfer, write-off or return in the ledger. */
@@ -908,6 +923,7 @@ export async function apiRecordStockMovement(token: string, body: StockMovementB
       ...(body.direction !== undefined && { direction: body.direction }),
       ...(body.toLocationId !== undefined && { to_location_id: Number(body.toLocationId) }),
       ...(body.kind !== undefined && { kind: body.kind }),
+      ...(body.redemptionId && { redemption_id: Number(body.redemptionId), refund_points: Boolean(body.refundPoints) }),
     },
   });
 }
@@ -983,4 +999,410 @@ export async function apiPostStocktake(token: string, stocktakeId: string) {
 
 export async function apiCancelStocktake(token: string, stocktakeId: string) {
   await request(`/backend/stocktakes/${stocktakeApiId(stocktakeId)}/cancel`, { method: "POST", token });
+}
+
+/** Changes how long a redemption holds its unit. */
+export async function apiSaveStockSettings(token: string, reservationHours: number) {
+  await request("/backend/stock-settings", { method: "PUT", token, body: { reservation_hours: reservationHours } });
+}
+
+/* ---------- Redemptions ---------- */
+
+type ApiRedemption = {
+  id: number;
+  customer_id: number;
+  reward_id: number;
+  reward_name: string;
+  variant_id: number | null;
+  location_id: number | null;
+  points: number;
+  status: Redemption["status"];
+  fulfillment: Redemption["fulfillment"] | null;
+  created_at: string;
+  reserved_until: string | null;
+  fulfilled_at: string | null;
+  batch: string | null;
+  serial: string | null;
+  closed_at: string | null;
+  close_reason: string | null;
+};
+
+type ApiRestockRequest = {
+  id: number;
+  customer_id: number;
+  reward_id: number;
+  variant_id: number | null;
+  created_at: string;
+  notified_at: string | null;
+};
+
+const toRedemption = (r: ApiRedemption): Redemption => ({
+  id: String(r.id),
+  userId: String(r.customer_id),
+  rewardId: String(r.reward_id),
+  rewardName: r.reward_name,
+  points: r.points,
+  createdAt: r.created_at.slice(0, 10),
+  status: r.status,
+  variantId: idOrBlank(r.variant_id),
+  locationId: r.location_id === null ? undefined : String(r.location_id),
+  reservedAt: r.reserved_until ? r.created_at : undefined,
+  reservedUntil: r.reserved_until ?? undefined,
+  fulfilledAt: r.fulfilled_at ?? undefined,
+  fulfillment: r.fulfillment ?? undefined,
+  batch: r.batch ?? undefined,
+  serial: r.serial ?? undefined,
+  closedAt: r.closed_at ?? undefined,
+  closeReason: r.close_reason ?? undefined,
+});
+
+const toRestockRequest = (r: ApiRestockRequest): RestockRequest => ({
+  id: String(r.id),
+  userId: String(r.customer_id),
+  rewardId: String(r.reward_id),
+  variantId: idOrBlank(r.variant_id),
+  createdAt: r.created_at,
+  notifiedAt: r.notified_at ?? undefined,
+});
+
+/** Spends the signed-in customer's points on a reward. */
+export async function apiRedeem(token: string, rewardId: string, variantId: string) {
+  await request("/redemptions", { method: "POST", token, body: { reward_id: Number(rewardId), variant_id: apiId(variantId) } });
+}
+
+/** Cancels one of the signed-in customer's redemptions, refunding its points. */
+export async function apiCancelMyRedemption(token: string, id: string) {
+  await request(`/redemptions/${id}/cancel`, { method: "POST", token });
+}
+
+/** Asks to hear when a sold-out reward is back in stock. */
+export async function apiRequestRestock(token: string, rewardId: string, variantId: string) {
+  await request("/restock-requests", { method: "POST", token, body: { reward_id: Number(rewardId), variant_id: apiId(variantId) } });
+}
+
+export async function apiDismissRestock(token: string, id: string) {
+  await request(`/restock-requests/${id}`, { method: "DELETE", token });
+}
+
+/** Hands a reserved redemption to the customer, taking the unit out of stock. */
+export async function apiFulfillRedemption(token: string, id: string, method: "SHIPPED" | "PICKED_UP", serial?: string) {
+  await request(`/backend/redemptions/${id}/fulfill`, { method: "POST", token, body: { method, serial: serial || null } });
+}
+
+export async function apiCancelRedemption(token: string, id: string, reason: string) {
+  await request(`/backend/redemptions/${id}/cancel`, { method: "POST", token, body: { reason } });
+}
+
+export async function apiExtendReservation(token: string, id: string, hours: number) {
+  await request(`/backend/redemptions/${id}/extend`, { method: "POST", token, body: { hours } });
+}
+
+/* ---------- Storefront ---------- */
+
+type ApiStorefrontReward = ApiReward & {
+  stock_item: { sku: string; tracking: Tracking; out_of_stock: "hide" | "disable"; allow_backorder: boolean };
+  variants: ApiVariant[];
+  available: Record<string, number>;
+};
+
+/** Everything guests and customers browse, in the store's shapes. */
+export type Storefront = {
+  categories: ProductCategory[];
+  products: Product[];
+  rewards: Reward[];
+  stockItems: Record<string, StockItem>;
+  /** Units available by "reward|variant"; a blank variant is the standard item. */
+  availability: Record<string, number>;
+  tiers: TierTable;
+  badges: Badge[];
+  campaigns: Campaign[];
+  exchangeRate: number;
+};
+
+const toStorefrontStockItem = (r: ApiStorefrontReward): StockItem => ({
+  rewardId: String(r.id),
+  sku: r.stock_item.sku,
+  unitCost: 0,
+  supplierId: "",
+  tracking: r.stock_item.tracking,
+  variants: r.variants.map((v) => ({ id: String(v.id), size: v.size ?? "", color: v.color ?? "", sku: v.sku })),
+  lowStockThreshold: 0,
+  reorderPoint: 0,
+  reorderQty: 0,
+  outOfStock: r.stock_item.out_of_stock,
+  allowBackorder: r.stock_item.allow_backorder,
+});
+
+/** Loads the storefront. Public: guests see it too. */
+export async function apiStorefront(): Promise<Storefront> {
+  const { data } = await request<{
+    data: {
+      categories: ApiCategory[];
+      products: ApiProduct[];
+      rewards: ApiStorefrontReward[];
+      tiers: Omit<ApiTier, "customers_count">[];
+      badges: Omit<ApiBadge, "customers_count">[];
+      campaigns: ApiCampaign[];
+      exchange_rate: number;
+    };
+  }>("/storefront");
+  return {
+    categories: data.categories.map(toCategory),
+    products: data.products.map(toProduct),
+    rewards: data.rewards.map(toReward),
+    stockItems: Object.fromEntries(data.rewards.map((r) => [String(r.id), toStorefrontStockItem(r)])),
+    availability: Object.fromEntries(
+      data.rewards.flatMap((r) => Object.entries(r.available).map(([variantId, units]) => [`${r.id}|${variantId}`, units])),
+    ),
+    tiers: Object.fromEntries(
+      data.tiers.map((t) => [
+        t.name,
+        { min: t.min_points, max: t.max_points ?? Infinity, multiplier: Number(t.multiplier), color: t.color ?? "#94a3b8" },
+      ]),
+    ),
+    badges: data.badges.map((b) => {
+      const { customerCount: _, ...badge } = toBadge({ ...b, customers_count: 0 });
+      return badge;
+    }),
+    campaigns: data.campaigns.map(toCampaign),
+    exchangeRate: data.exchange_rate,
+  };
+}
+
+/* ---------- Customers ---------- */
+
+type ApiCustomer = {
+  id: number;
+  name: string;
+  name_kh: string | null;
+  email: string;
+  phone: string | null;
+  province: string | null;
+  referral_code: string;
+  points_balance: number;
+  qualifying_points: number;
+  is_active: boolean;
+  tier_locked: boolean;
+  avatar: string | null;
+  total_spent: number;
+  tier: string | null;
+  joined_at: string | null;
+  last_order_at: string | null;
+  orders_count: number;
+  badges: string[];
+};
+
+/** A customer in the store's shape, plus what the store keeps beside the customer. */
+export type CustomerRecord = { customer: Customer; qualifyingPoints: number; tierLocked: boolean; active: boolean };
+
+const toCustomerRecord = (c: ApiCustomer): CustomerRecord => ({
+  customer: {
+    id: String(c.id),
+    name: c.name,
+    nameKh: c.name_kh ?? "",
+    email: c.email,
+    phone: c.phone ?? "",
+    province: c.province ?? "",
+    avatar: c.avatar ?? `https://ui-avatars.com/api/?name=${encodeURIComponent(c.name)}&background=262a36&color=e8a634`,
+    tier: c.tier ?? "",
+    points: c.points_balance,
+    totalSpent: c.total_spent,
+    joinedAt: c.joined_at ?? "",
+    lastOrder: c.last_order_at ?? "",
+    referralCode: c.referral_code,
+    badges: c.badges,
+    ordersCount: c.orders_count,
+  },
+  qualifyingPoints: c.qualifying_points,
+  tierLocked: c.tier_locked,
+  active: c.is_active,
+});
+
+/** Loads every customer, for staff. */
+export async function apiCustomers(token: string): Promise<CustomerRecord[]> {
+  return (await fetchAll<ApiCustomer>("/backend/customers", token)).map(toCustomerRecord);
+}
+
+/** Locks a customer to a tier, or lets their points decide it again when `tier` is null. */
+export async function apiOverrideTier(token: string, id: string, tier: string | null, reason: string) {
+  await request(`/backend/customers/${id}/tier`, { method: "PATCH", token, body: { tier, reason } });
+}
+
+export async function apiSetCustomerActive(token: string, id: string, active: boolean) {
+  await request(`/backend/customers/${id}/status`, { method: "PATCH", token, body: { is_active: active } });
+}
+
+/** Updates the signed-in customer's own details. */
+export async function apiUpdateProfile(token: string, fields: { name: string; phone: string; province: string }) {
+  await request("/profile", { method: "PATCH", token, body: fields });
+}
+
+/* ---------- Orders ---------- */
+
+type ApiOrder = {
+  id: number;
+  reference: string;
+  customer_id: number;
+  customer_name: string | null;
+  status: OrderStatus;
+  total: number;
+  points_earned: number;
+  ordered_at: string | null;
+  delivery_address: string | null;
+  delivery_phone: string | null;
+  items: { product_id: number; name: string | null; quantity: number; unit_price: number; base_points: number; bonus_multiplier: number }[];
+};
+
+/** Orders are shown by their reference, "ORD-000012"; the API addresses them by number. */
+const orderApiId = (id: string) => Number(id.replace(/^ORD-/, ""));
+
+const toOrder = (o: ApiOrder): Order => ({
+  id: o.reference,
+  customerId: String(o.customer_id),
+  customerName: o.customer_name ?? "",
+  items: o.items.map((item) => ({
+    productId: String(item.product_id),
+    name: item.name ?? "",
+    qty: item.quantity,
+    price: item.unit_price,
+    basePoints: item.base_points,
+    bonusMultiplier: item.bonus_multiplier,
+  })),
+  total: o.total,
+  status: o.status,
+  pointsEarned: o.points_earned,
+  createdAt: (o.ordered_at ?? "").slice(0, 10),
+  deliveryAddress: o.delivery_address ?? undefined,
+  deliveryPhone: o.delivery_phone ?? undefined,
+});
+
+/** Places an order for the signed-in customer. Prices and points come from the server. */
+export async function apiCheckout(token: string, cart: CartItem[], address: string, phone: string) {
+  await request("/checkout", {
+    method: "POST",
+    token,
+    body: { items: cart.map((item) => ({ product_id: Number(item.productId), quantity: item.qty })), address, phone },
+  });
+}
+
+/** Loads every order, newest first, for staff. */
+export async function apiOrders(token: string): Promise<Order[]> {
+  return (await fetchAll<ApiOrder>("/backend/orders", token)).map(toOrder);
+}
+
+export async function apiUpdateOrderStatus(token: string, id: string, status: OrderStatus) {
+  await request(`/backend/orders/${orderApiId(id)}/status`, { method: "PATCH", token, body: { status } });
+}
+
+/* ---------- Referrals ---------- */
+
+type ApiReferral = {
+  id: number;
+  referrer_id: number;
+  referrer_name: string | null;
+  referred_id: number;
+  referred_name: string | null;
+  completed: boolean;
+  created_at: string | null;
+};
+
+const toReferral = (r: ApiReferral): Referral => ({
+  id: String(r.id),
+  referrerId: String(r.referrer_id),
+  referrerName: r.referrer_name ?? undefined,
+  customerId: String(r.referred_id),
+  customerName: r.referred_name ?? undefined,
+  completed: r.completed,
+  createdAt: r.created_at ?? "",
+});
+
+/** Loads every referral, for staff. */
+export async function apiReferrals(token: string): Promise<Referral[]> {
+  return (await fetchAll<ApiReferral>("/backend/referrals", token)).map(toReferral);
+}
+
+/* ---------- Customer account ---------- */
+
+/** Everything about the signed-in customer, in the store's shapes. */
+export type Account = {
+  record: CustomerRecord;
+  orders: Order[];
+  redemptions: Redemption[];
+  restockRequests: RestockRequest[];
+  referrals: Referral[];
+  tierHistory: TierChange[];
+};
+
+export async function apiAccount(token: string): Promise<Account> {
+  const { data } = await request<{
+    data: {
+      profile: ApiCustomer;
+      orders: ApiOrder[];
+      redemptions: ApiRedemption[];
+      restock_requests: ApiRestockRequest[];
+      referrals: ApiReferral[];
+      tier_history: { id: number; customer_id: number; from: string | null; to: string | null; reason: string | null; created_at: string | null }[];
+    };
+  }>("/account", { token });
+  return {
+    record: toCustomerRecord(data.profile),
+    orders: data.orders.map(toOrder),
+    redemptions: data.redemptions.map(toRedemption),
+    restockRequests: data.restock_requests.map(toRestockRequest),
+    referrals: data.referrals.map(toReferral),
+    tierHistory: data.tier_history.map((t) => ({
+      id: String(t.id),
+      userId: String(t.customer_id),
+      from: t.from ?? "",
+      to: t.to ?? "",
+      reason: t.reason ?? "",
+      createdAt: (t.created_at ?? "").slice(0, 10),
+    })),
+  };
+}
+
+/* ---------- Activity log, reports and settings ---------- */
+
+type ApiLog = {
+  id: number;
+  customer_id: number | null;
+  user_id: number | null;
+  actor_name: string;
+  event: string;
+  description: string | null;
+  created_at: string | null;
+};
+
+/** The latest activity log entries. Staff ids match the ones `linkApiAdmin` gives API accounts. */
+export async function apiActivityLogs(token: string): Promise<LogEntry[]> {
+  const { data } = await fetchPage<ApiLog>("/backend/activity-logs", token, { page: 1, perPage: 100 });
+  return data.map((log) => ({
+    id: String(log.id),
+    userId: log.user_id !== null ? `api-admin-${log.user_id}` : log.customer_id !== null ? String(log.customer_id) : "system",
+    userName: log.actor_name,
+    event: log.event,
+    description: log.description ?? "",
+    timestamp: (log.created_at ?? "").replace("T", " ").slice(0, 16),
+  }));
+}
+
+/** The totals the dashboards show, which most staff cannot add up from the ledger themselves. */
+export type ReportTotals = { pointsIssued: number; pointsRedeemed: number; rewardsRedeemed: number };
+
+export async function apiReportTotals(token: string): Promise<ReportTotals> {
+  const { data } = await request<{ data: { points_issued: number; points_redeemed: number; rewards_redeemed: number } }>(
+    "/backend/reports/summary",
+    { token },
+  );
+  return { pointsIssued: data.points_issued, pointsRedeemed: data.points_redeemed, rewardsRedeemed: data.rewards_redeemed };
+}
+
+/** Changes the KHR rate for one US dollar. */
+export async function apiSaveExchangeRate(token: string, rate: number) {
+  await request("/backend/settings/exchange-rate", { method: "PUT", token, body: { rate } });
+}
+
+/** Updates the signed-in staff user's own name and email. */
+export async function apiUpdateStaffProfile(token: string, fields: { name: string; email: string }) {
+  await request("/backend/profile", { method: "PATCH", token, body: fields });
 }

@@ -30,8 +30,8 @@ export function AdminReferralsPage() {
               className="flex justify-between border-t border-[var(--border)] py-3 text-sm"
             >
               <span>
-                {customers.find((c) => c.id === r.referrerId)?.name} →{" "}
-                {customers.find((c) => c.id === r.customerId)?.name}
+                {r.referrerName ?? customers.find((c) => c.id === r.referrerId)?.name} →{" "}
+                {r.customerName ?? customers.find((c) => c.id === r.customerId)?.name}
                 <span className="block text-xs text-[var(--muted-foreground)]">
                   {r.createdAt}
                 </span>

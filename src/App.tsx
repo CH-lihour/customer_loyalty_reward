@@ -4,7 +4,9 @@ import { useApiTiers } from "./data/tierSync";
 import { useApiBadges } from "./data/badgeSync";
 import { useApiRewards } from "./data/rewardSync";
 import { useApiCampaigns } from "./data/campaignSync";
-import { useCustomerPoints } from "./data/pointSync";
+import { AccountApiProvider } from "./data/accountApi";
+import { useApiOperations } from "./data/operationsSync";
+import { useStorefront } from "./data/storefrontSync";
 import { useFeedback } from "./components/FeedbackProvider";
 import { LoginPage, type LoginRole } from "./components/LoginPage";
 import { CustomerLayout } from "./components/CustomerLayout";
@@ -205,10 +207,13 @@ export default function App() {
       ? session.token
       : null,
   );
-  // A signed-in customer's balance and history come from the API's ledger.
-  useCustomerPoints(
-    session?.role === "customer" ? session.token : null,
-    session?.role === "customer" ? session.userId : null,
+  // Guests, customers and staff all browse the API's catalog, tiers, badges and exchange rate.
+  const reloadStorefront = useStorefront(session?.role === "admin" ? allowedAdminPages : null);
+  // Staff see the API's customers, orders, referrals and activity, reloaded as they move between pages.
+  const reloadOperations = useApiOperations(
+    session?.role === "admin" ? session.token : null,
+    allowedAdminPages,
+    route.role === "admin" ? route.page : "",
   );
 
   const navigate = (next: Route, replace = false) => {
@@ -542,14 +547,14 @@ export default function App() {
         userRoleLabel={shop.roleLabels[adminUser.role] ?? adminUser.role}
       >
         {adminPage === "dashboard" && <AdminDashboardPage />}
-        {adminPage === "customers" && <AdminCustomersPage />}
+        {adminPage === "customers" && <AdminCustomersPage token={session.token} onChanged={reloadOperations} />}
         {adminPage === "products" && (
           <AdminProductsPage actorId={adminUser.id} token={session.token} />
         )}
         {adminPage === "categories" && (
           <AdminCategoriesPage actorId={adminUser.id} token={session.token} />
         )}
-        {adminPage === "orders" && <AdminOrdersPage />}
+        {adminPage === "orders" && <AdminOrdersPage token={session.token} onChanged={reloadOperations} />}
         {adminPage === "points" && (
           <AdminPointsPage actorId={adminUser.id} token={session.token} />
         )}
@@ -589,17 +594,22 @@ export default function App() {
         )}
         {adminPage === "logs" && <AdminActivityLogsPage />}
         {adminPage === "analytics" && <AdminAnalyticsPage />}
-        {adminPage === "users" && <AdminUsersPage actorId={adminUser.id} token={session.token} />}
+        {adminPage === "users" && <AdminUsersPage actorId={adminUser.id} token={session.token} onCustomersChanged={reloadOperations} />}
         {adminPage === "roles" && <AdminRolesPage actorId={adminUser.id} token={session.token} />}
         {adminPage === "exchange-rate" && (
-          <AdminExchangeRatePage actorId={adminUser.id} />
+          <AdminExchangeRatePage token={session.token} onChanged={reloadOperations} />
         )}
-        {adminPage === "profile" && <AdminProfilePage userId={adminUser.id} />}
+        {adminPage === "profile" && <AdminProfilePage userId={adminUser.id} token={session.token} />}
       </AdminLayout>
     );
   }
 
   return (
+    <AccountApiProvider
+      token={session?.role === "customer" ? session.token : null}
+      userId={session?.role === "customer" ? session.userId : null}
+      onChanged={reloadStorefront}
+    >
     <CustomerLayout
       page={customerPage}
       onNav={navigateCustomer}
@@ -662,5 +672,6 @@ export default function App() {
         />
       )}
     </CustomerLayout>
+    </AccountApiProvider>
   );
 }

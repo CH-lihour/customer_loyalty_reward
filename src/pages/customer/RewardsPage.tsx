@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { useShop } from "../../data/shop";
+import { useAccountMutation } from "../../data/accountApi";
+import { apiCancelMyRedemption, apiDismissRestock, apiRedeem, apiRequestRestock } from "../../data/api";
 import { meetsTier } from "../../data/tiers";
 import { TierBadge } from "../../components/TierBadge";
 import { useFeedback } from "../../components/FeedbackProvider";
@@ -19,6 +21,7 @@ const statusLabels: Record<Redemption["status"], { text: string; tone: string }>
 
 export function RewardsPage() {
   const shop = useShop();
+  const run = useAccountMutation();
   const { notify, confirm } = useFeedback();
   const [filter, setFilter] = useState<"available" | "all">("available");
   const [variants, setVariants] = useState<Record<string, string>>({});
@@ -59,20 +62,20 @@ export function RewardsPage() {
     void confirm(backorder
       ? `Backorder ${r.name}${option} for ${r.pointsCost} points? Points are deducted now and the reward is reserved for you as soon as stock arrives.`
       : `Redeem ${r.name}${option} for ${r.pointsCost} points? It will be held for you for ${shop.stockSettings.reservationHours} hours while we prepare it.`,
-    ).then((ok) => {
+    ).then(async (ok) => {
       if (!ok) return;
-      const error = shop.redeem(r.id, variantId);
+      const error = await run((token) => apiRedeem(token, r.id, variantId));
       notify(error ?? (backorder ? `${r.name} backordered. We'll reserve it when stock arrives.` : `Redeemed ${r.name}. It's reserved for you.`), error ? "error" : "success");
     });
   };
-  const notifyMe = (r: Reward) => {
-    const error = shop.requestRestock(r.id, variantOf(r));
+  const notifyMe = async (r: Reward) => {
+    const error = await run((token) => apiRequestRestock(token, r.id, variantOf(r)));
     notify(error ?? `We'll let you know when ${r.name} is back in stock.`, error ? "info" : "success");
   };
   const cancel = (r: Redemption) => {
-    void confirm(`Cancel ${r.rewardName}? Your ${r.points} points will be refunded.`).then((ok) => {
+    void confirm(`Cancel ${r.rewardName}? Your ${r.points} points will be refunded.`).then(async (ok) => {
       if (!ok) return;
-      const error = shop.cancelMyRedemption(r.id);
+      const error = await run((token) => apiCancelMyRedemption(token, r.id));
       notify(error ?? `Cancelled. ${r.points} points refunded.`, error ? "error" : "success");
     });
   };
@@ -104,7 +107,7 @@ export function RewardsPage() {
         return (
           <div key={request.id} role="status" className="flex items-center justify-between gap-3 rounded-xl border border-green-400/30 bg-green-400/10 px-4 py-3 text-sm">
             <span><strong>{reward.name}</strong> is back in stock{request.variantId ? ` (${variantLabel(shop.stockItemFor(reward.id), request.variantId)})` : ""}. Redeem it before it runs out.</span>
-            <button type="button" onClick={() => shop.dismissRestock(request.id)} className="text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)]">Dismiss</button>
+            <button type="button" onClick={() => void run((token) => apiDismissRestock(token, request.id))} className="text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)]">Dismiss</button>
           </div>
         );
       })}

@@ -4,7 +4,7 @@ import { useModalState } from "../../components/useModalState";
 import { ActionIconButton } from "../../components/ActionIconButton";
 import { useFeedback } from "../../components/FeedbackProvider";
 import { toAdminUser, useShop } from "../../data/shop";
-import { apiSaveStaffUser, apiStaffUserPage } from "../../data/api";
+import { apiSaveStaffUser, apiStaffUserPage, apiSetCustomerActive } from "../../data/api";
 import { useApiStaff } from "../../data/staff";
 import { useApiTable } from "../../data/apiTable";
 import { TablePagination, usePagedRows } from "../../components/TablePagination";
@@ -15,8 +15,8 @@ const fieldClass = "mt-1 w-full rounded-lg border border-[var(--border)] bg-[var
 /** The API id behind a staff user's store id (`api-admin-<id>`). */
 const apiUserId = (id: string) => Number(id.replace("api-admin-", "")) || null;
 
-export function AdminUsersPage({ actorId, token }: { actorId: string; token: string }) {
-  const { roleLabels, customers, disabledCustomerIds, setCustomerActive, logStaffAction } = useShop();
+export function AdminUsersPage({ actorId, token, onCustomersChanged }: { actorId: string; token: string; onCustomersChanged: () => Promise<void> }) {
+  const { roleLabels, customers, disabledCustomerIds, logStaffAction } = useShop();
   const { notify } = useFeedback();
   const { roleId, loadError, reload: reloadStaff } = useApiStaff(token);
   const [editing, setEditing, modalClosing] = useModalState<(AdminUser & { password: string }) | null>(null);
@@ -71,11 +71,16 @@ export function AdminUsersPage({ actorId, token }: { actorId: string; token: str
       notify((failure as Error).message, "error");
     }
   };
-  const toggleCustomer = (id: string, name: string) => {
+  const toggleCustomer = async (id: string, name: string) => {
     const active = disabledCustomerIds.includes(id);
-    const result = setCustomerActive(actorId, id, active);
-    if (result) notify(result, "error");
-    else notify(`${name} ${active ? "enabled" : "disabled"}.`, "success");
+    try {
+      await apiSetCustomerActive(token, id, active);
+    } catch (failure) {
+      notify((failure as Error).message, "error");
+      return;
+    }
+    await onCustomersChanged().catch(() => {});
+    notify(`${name} ${active ? "enabled" : "disabled"}.`, "success");
   };
   const customerTable = usePagedRows(customers.filter((user) =>
     `${user.name} ${user.email}`.toLowerCase().includes(customerSearch.toLowerCase()),

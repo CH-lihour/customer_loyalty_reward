@@ -1,5 +1,6 @@
 import { useState } from "react"
 import { useShop } from "../../data/shop"
+import { apiUpdateOrderStatus } from "../../data/api"
 import { useFeedback } from "../../components/FeedbackProvider"
 import type { OrderStatus } from "../../data/mockData"
 import { AdminModal } from "../../components/AdminModal"
@@ -30,8 +31,8 @@ const nextStatuses: Record<OrderStatus, OrderStatus[]> = {
   CANCELLED: [],
 }
 
-export function AdminOrdersPage() {
-  const { orders, updateOrderStatus } = useShop()
+export function AdminOrdersPage({ token, onChanged }: { token: string; onChanged: () => Promise<void> }) {
+  const { orders } = useShop()
   const { notify } = useFeedback()
   const [filter, setFilter] = useState<"All" | OrderStatus>("All")
   const [editingId, setEditingId, modalClosing] = useModalState<string | null>(null)
@@ -45,8 +46,14 @@ export function AdminOrdersPage() {
 
   const filtered = orders.filter((o) => filter === "All" || o.status === filter)
 
-  const updateStatus = (id: string, status: OrderStatus) => {
-    updateOrderStatus(id, status)
+  const updateStatus = async (id: string, status: OrderStatus) => {
+    try {
+      await apiUpdateOrderStatus(token, id, status)
+    } catch (failure) {
+      notify((failure as Error).message, "error")
+      return
+    }
+    await onChanged().catch(() => {})
     notify(`Order ${id} changed to ${status}.`, "success")
   }
 

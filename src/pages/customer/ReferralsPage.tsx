@@ -65,7 +65,7 @@ export function ReferralsPage() {
               className="flex items-center justify-between rounded-lg border border-[var(--border)] bg-[var(--card)] p-3 text-sm"
             >
               <span>
-                {customers.find((c) => c.id === r.customerId)?.name ??
+                {r.customerName ?? customers.find((c) => c.id === r.customerId)?.name ??
                   "Customer"}
                 <span className="block text-xs text-[var(--muted-foreground)]">
                   {r.createdAt}

@@ -2,7 +2,7 @@ import { useShop } from "./shop";
 import { tierOrder } from "./tiers";
 
 export function useAnalytics() {
-  const { customers, orders, transactions, redemptions, referrals, tiers } = useShop();
+  const { customers, orders, transactions, redemptions, referrals, tiers, reportTotals } = useShop();
   const completed = orders.filter((o) => o.status === "COMPLETED");
   const daysSince = (date: string) =>
     date
@@ -14,18 +14,18 @@ export function useAnalytics() {
       .length,
     totalOrders: orders.length,
     completedOrders: completed.length,
-    totalPointsIssued: transactions
-      .filter((t) => t.points > 0)
-      .reduce((n, t) => n + t.points, 0),
-    totalPointsRedeemed: -transactions
-      .filter((t) => t.type === "SPEND")
-      .reduce((n, t) => n + t.points, 0),
+    totalPointsIssued:
+      reportTotals?.pointsIssued ??
+      transactions.filter((t) => t.points > 0).reduce((n, t) => n + t.points, 0),
+    totalPointsRedeemed:
+      reportTotals?.pointsRedeemed ??
+      -transactions.filter((t) => t.type === "SPEND").reduce((n, t) => n + t.points, 0),
     // Customers per tier, from the entry tier upwards.
     tierCounts: tierOrder(tiers).map((tier) => ({
       tier,
       count: customers.filter((c) => c.tier === tier).length,
     })),
-    totalRewardsRedeemed: redemptions.length,
+    totalRewardsRedeemed: reportTotals?.rewardsRedeemed ?? redemptions.length,
     referralConversions: referrals.filter((r) => r.completed).length,
     repeatCustomers: customers.filter((c) => c.ordersCount > 1).length,
     oneTimeCustomers: customers.filter((c) => c.ordersCount === 1).length,

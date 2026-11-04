@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { useShop } from "../../data/shop";
+import { useAccountMutation } from "../../data/accountApi";
+import { apiCheckout } from "../../data/api";
 import { tierRule } from "../../data/tiers";
 import { useFeedback } from "../../components/FeedbackProvider";
 import { ProductCover } from "../../components/ProductImage";
@@ -16,6 +18,8 @@ export function CartPage({
 }) {
   const shop = useShop();
   const { notify } = useFeedback();
+  const run = useAccountMutation();
+  const [placing, setPlacing] = useState(false);
   const [checkingOut, setCheckingOut] = useState(false);
   const [address, setAddress] = useState("");
   const [phone, setPhone] = useState(guest ? "" : shop.currentUser.phone);
@@ -160,13 +164,17 @@ export function CartPage({
         ) : (
           <form
             className="space-y-3"
-            onSubmit={(e) => {
+            onSubmit={async (e) => {
               e.preventDefault();
-              const result = shop.checkout(address, phone);
+              if (placing) return;
+              setPlacing(true);
+              const result = await run((token) => apiCheckout(token, shop.cart, address.trim(), phone.trim()));
+              setPlacing(false);
               if (result) {
                 setError(result);
                 notify(result, "error");
               } else {
+                shop.setCart([]);
                 notify(
                   "Order placed! Points will arrive when it is completed.",
                   "success",
@@ -193,7 +201,7 @@ export function CartPage({
               className="w-full rounded-lg border border-[var(--border)] bg-[var(--secondary)] px-3 py-2"
             />
             <p className="text-xs text-[var(--muted-foreground)]">
-              Demo order · No payment is collected
+              Cash on delivery · Pay when your order arrives
             </p>
             {error && (
               <p role="alert" className="text-sm text-red-400">
@@ -203,9 +211,10 @@ export function CartPage({
             <div className="flex gap-2">
               <button
                 type="submit"
-                className="flex-1 rounded-lg bg-[var(--gold-mid)] text-[var(--background)] py-2 font-semibold"
+                disabled={placing}
+                className="flex-1 rounded-lg bg-[var(--gold-mid)] text-[var(--background)] py-2 font-semibold disabled:opacity-60"
               >
-                Place Order
+                {placing ? "Placing order…" : "Place Order"}
               </button>
               <button
                 type="button"

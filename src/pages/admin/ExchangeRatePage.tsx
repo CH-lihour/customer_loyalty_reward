@@ -4,10 +4,11 @@ import { useModalState } from "../../components/useModalState"
 import { Icon } from "../../components/Icon"
 import { useFeedback } from "../../components/FeedbackProvider"
 import { useShop } from "../../data/shop"
+import { apiSaveExchangeRate } from "../../data/api"
 
 const formatKHR = (amount: number) => `៛${amount.toLocaleString()}`
 
-export function AdminExchangeRatePage({ actorId }: { actorId: string }) {
+export function AdminExchangeRatePage({ token, onChanged }: { token: string; onChanged: () => Promise<void> }) {
   const shop = useShop()
   const { notify } = useFeedback()
   const [editing, setEditing, modalClosing] = useModalState<boolean>(false)
@@ -29,13 +30,17 @@ export function AdminExchangeRatePage({ actorId }: { actorId: string }) {
     setEditing(true)
   }
 
-  const save = (event: FormEvent<HTMLFormElement>) => {
+  const save = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    const result = shop.saveExchangeRate(actorId, Number(draft))
-    if (result) {
-      setError(result)
+    const rate = Number(draft)
+    try {
+      await apiSaveExchangeRate(token, rate)
+    } catch (failure) {
+      setError((failure as Error).message)
       return
     }
+    shop.syncExchangeRate(rate)
+    await onChanged().catch(() => {})
     setEditing(false)
     notify("Exchange rate updated.", "success")
   }

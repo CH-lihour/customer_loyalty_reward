@@ -1,3 +1,4 @@
+import { apiUpdateStaffProfile } from "../../data/api";
 import { useState, type FormEvent } from "react";
 import { Icon } from "../../components/Icon";
 import { ActionIconButton } from "../../components/ActionIconButton";
@@ -7,7 +8,7 @@ import { useShop } from "../../data/shop";
 
 const fieldClass = "mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--secondary)] px-3 py-2 text-sm outline-none focus:border-[var(--gold-mid)]";
 
-export function AdminProfilePage({ userId }: { userId: string }) {
+export function AdminProfilePage({ userId, token }: { userId: string; token: string }) {
   const { adminUsers, roleLabels, rolePermissions, updateAdminProfile } = useShop();
   const { notify } = useFeedback();
   const user = adminUsers.find((item) => item.id === userId);
@@ -23,10 +24,14 @@ export function AdminProfilePage({ userId }: { userId: string }) {
     setError("");
     setEditing(true);
   };
-  const save = (event: FormEvent<HTMLFormElement>) => {
+  const save = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const result = updateAdminProfile(userId, { name, email });
-    if (result) return setError(result);
+    try {
+      await apiUpdateStaffProfile(token, { name, email });
+    } catch (failure) {
+      return setError((failure as Error).message);
+    }
+    updateAdminProfile(userId, { name, email });
     setEditing(false);
     setError("");
     notify("Profile updated.", "success");
