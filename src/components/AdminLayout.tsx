@@ -40,6 +40,26 @@ const navItems: {
 /** Sidebar groups, in order. "Account" (My Profile) is reached from the top bar's profile button instead. */
 const groups = ["Overview", "Sales", "Catalog", "Loyalty", "Stock", "Supply", "Administration"];
 
+const openGroupKey = "khmershop-admin-open-group";
+
+/** The sidebar group left open last time. Storage can be blocked; the sidebar then simply starts closed. */
+function readOpenGroup(): string | null {
+  try {
+    return localStorage.getItem(openGroupKey);
+  } catch {
+    return null;
+  }
+}
+
+function saveOpenGroup(group: string | null) {
+  try {
+    if (group) localStorage.setItem(openGroupKey, group);
+    else localStorage.removeItem(openGroupKey);
+  } catch {
+    /* Remembering the open group is only a convenience. */
+  }
+}
+
 const initialsOf = (name: string) =>
   name
     .split(/\s+/)
@@ -62,12 +82,16 @@ export function AdminLayout({ page, onNav, onLogout, allowedPages, userName, use
   const [menuOpen, setMenuOpen] = useState(false);
   const currentItem = navItems.find((item) => item.id === page);
   const activeGroup = currentItem?.group;
-  // Accordion: at most one group is open. Going to a page opens that page's group.
-  const [openGroup, setOpenGroup] = useState<string | null>(activeGroup ?? null);
+  // Accordion: at most one group is open. Going to a page opens that page's group; pages outside
+  // the sidebar, like My Profile, keep the group the admin last left open.
+  const sidebarGroup = activeGroup && groups.includes(activeGroup) ? activeGroup : null;
+  const [openGroup, setOpenGroup] = useState<string | null>(() => sidebarGroup ?? readOpenGroup());
 
   useEffect(() => {
-    if (activeGroup) setOpenGroup(activeGroup);
-  }, [activeGroup]);
+    if (sidebarGroup) setOpenGroup(sidebarGroup);
+  }, [sidebarGroup]);
+
+  useEffect(() => saveOpenGroup(openGroup), [openGroup]);
 
   const toggleGroup = (group: string) => setOpenGroup((current) => (current === group ? null : group));
 
@@ -108,7 +132,7 @@ export function AdminLayout({ page, onNav, onLogout, allowedPages, userName, use
         </div>
       </div>
 
-      <nav className="flex-1 p-3 flex flex-col gap-2 pt-4">
+      <nav className="flex-1 p-3 flex flex-col gap-1.5 pt-4">
         {groups.map((group) => {
           const items = navItems.filter((n) => n.group === group && allowedPages.includes(n.id));
           if (!items.length) return null;
@@ -123,12 +147,12 @@ export function AdminLayout({ page, onNav, onLogout, allowedPages, userName, use
                 onClick={() => toggleGroup(group)}
                 aria-expanded={open}
                 aria-controls={listId}
-                className={`flex w-full items-center justify-between rounded-md px-2 py-1 text-xs font-semibold uppercase tracking-wider transition-colors hover:text-[var(--foreground)] ${holdsHiddenPage ? "text-[var(--gold-mid)]" : "text-[var(--muted-foreground)]"}`}
+                className={`flex w-full items-center justify-between rounded-lg px-2 py-2.5 text-base font-semibold tracking-wide transition-colors hover:bg-[var(--secondary)] ${holdsHiddenPage ? "text-[var(--gold-mid)]" : "text-[var(--foreground)]"}`}
               >
                 {group}
                 <Icon
                   name="chevron"
-                  className={`h-3.5 w-3.5 transition-transform duration-200 ${open ? "" : "-rotate-90"}`}
+                  className={`h-4 w-4 transition-transform duration-200 ${open ? "" : "-rotate-90"}`}
                 />
               </button>
               <div
@@ -137,7 +161,8 @@ export function AdminLayout({ page, onNav, onLogout, allowedPages, userName, use
                 className={`grid transition-[grid-template-rows] duration-200 ease-out motion-reduce:transition-none ${open ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}
               >
                 <div className="overflow-hidden">
-                  <div className="pt-1">
+                  {/* Every child shares this indent and guide line, setting it apart from its parent. */}
+                  <div className="mb-1 ml-3 mt-1 border-l border-[var(--border)] pl-2">
                     {items.map((item) => (
                       <button
                         key={item.id}
