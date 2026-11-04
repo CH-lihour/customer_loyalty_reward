@@ -1,13 +1,13 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useState } from "react"
 import { useShop } from "../../data/shop"
 import {
   apiAdjustPoints,
-  apiPointCustomers,
   apiPointPage,
   type PointCustomer,
 } from "../../data/api"
 import { useApiTable } from "../../data/apiTable"
 import { useFeedback } from "../../components/FeedbackProvider"
+import { CustomerCombobox } from "../../components/CustomerCombobox"
 import { AdminModal } from "../../components/AdminModal"
 import { useModalState } from "../../components/useModalState"
 import { TablePagination } from "../../components/TablePagination"
@@ -49,26 +49,12 @@ export function AdminPointsPage({
     return () => clearTimeout(timer)
   }, [search])
 
-  const [customers, setCustomers] = useState<PointCustomer[]>([])
   const [showAdjust, setShowAdjust, modalClosing] = useModalState<boolean>(false)
-  const [adjustUserId, setAdjustUserId] = useState("")
+  const [customer, setCustomer] = useState<PointCustomer | null>(null)
   const [adjustPoints, setAdjustPoints] = useState("")
   const [adjustReason, setAdjustReason] = useState("")
   const [error, setError] = useState("")
   const [saving, setSaving] = useState(false)
-  const notifyRef = useRef(notify)
-  notifyRef.current = notify
-
-  const loadCustomers = async () => {
-    const loaded = await apiPointCustomers(token)
-    setCustomers(loaded)
-    setAdjustUserId((current) => current || (loaded[0]?.id ?? ""))
-  }
-  useEffect(() => {
-    loadCustomers().catch((failure: Error) => notifyRef.current(failure.message, "error"))
-    // Reloads only for a new session; the form refreshes the list itself after an adjustment.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token])
 
   const openAdjust = () => {
     setError("")
@@ -77,23 +63,26 @@ export function AdminPointsPage({
 
   const handleAdjust = async () => {
     if (saving) return
-    const customer = customers.find((c) => c.id === adjustUserId)
+    if (!customer) {
+      setError("Choose a customer.")
+      return
+    }
     setSaving(true)
     setError("")
     try {
-      const row = await apiAdjustPoints(token, adjustUserId, adjustPoints, adjustReason)
-      await loadCustomers()
+      const row = await apiAdjustPoints(token, customer.id, adjustPoints, adjustReason)
       table.reload()
       logStaffAction(
         actorId,
         "POINTS_ADJUSTED",
-        `${row.points > 0 ? "+" : ""}${row.points} points for ${customer?.name}: ${adjustReason.trim()}`,
+        `${row.points > 0 ? "+" : ""}${row.points} points for ${customer.name}: ${adjustReason.trim()}`,
       )
+      setCustomer({ ...customer, points: row.balanceAfter })
       setAdjustPoints("")
       setAdjustReason("")
       setShowAdjust(false)
       notify(
-        `${customer?.name}'s balance is now ${row.balanceAfter.toLocaleString()} points.`,
+        `${customer.name}'s balance is now ${row.balanceAfter.toLocaleString()} points.`,
         "success",
       )
     } catch (failure) {
@@ -191,18 +180,7 @@ export function AdminPointsPage({
             }}
           >
             <div className="grid gap-3">
-              <select
-                aria-label="Customer"
-                value={adjustUserId}
-                onChange={(e) => setAdjustUserId(e.target.value)}
-                className="px-3 py-2 rounded-lg bg-[var(--secondary)] border border-[var(--border)] text-sm text-[var(--foreground)] focus:outline-none"
-              >
-                {customers.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name} · {c.points.toLocaleString()} pts
-                  </option>
-                ))}
-              </select>
+              <CustomerCombobox token={token} value={customer} onChange={setCustomer} />
               <input
                 aria-label="Points to add or subtract"
                 value={adjustPoints}

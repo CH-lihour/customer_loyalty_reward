@@ -641,13 +641,14 @@ export async function apiPointPage(
 /** A customer in the adjustment form's list. */
 export type PointCustomer = { id: string; name: string; email: string; points: number; tier: string };
 
-/** Loads every customer for the adjustment form, with their balance and tier. */
-export async function apiPointCustomers(token: string): Promise<PointCustomer[]> {
-  const rows = await fetchAll<{ id: number; name: string; email: string; points_balance: number; tier: { name: string } | null }>(
+/** Finds customers for the adjustment form by name, email or ID, with their balance and tier. */
+export async function apiSearchPointCustomers(token: string, search: string): Promise<PointCustomer[]> {
+  const { data } = await fetchPage<{ id: number; name: string; email: string; points_balance: number; tier: { name: string } | null }>(
     "/backend/points/customers",
     token,
+    { page: 1, perPage: 20, search },
   );
-  return rows.map((c) => ({ id: String(c.id), name: c.name, email: c.email, points: c.points_balance, tier: c.tier?.name ?? "" }));
+  return data.map((c) => ({ id: String(c.id), name: c.name, email: c.email, points: c.points_balance, tier: c.tier?.name ?? "" }));
 }
 
 /** Adds (positive) or removes (negative) a customer's points. Returns the new ledger row. */
