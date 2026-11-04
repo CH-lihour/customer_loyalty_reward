@@ -1,37 +1,106 @@
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useShop } from "../../data/shop"
+import {
+  apiAdjustPoints,
+  apiPointCustomers,
+  apiPointPage,
+  type PointCustomer,
+} from "../../data/api"
+import { useApiTable } from "../../data/apiTable"
 import { useFeedback } from "../../components/FeedbackProvider"
 import { AdminModal } from "../../components/AdminModal"
 import { useModalState } from "../../components/useModalState"
-import { TablePagination, usePagedRows } from "../../components/TablePagination"
+import { TablePagination } from "../../components/TablePagination"
 
-export function AdminPointsPage() {
-  const {
-    transactions: txs,
-    customers,
-    adjustPoints: applyAdjustment,
-  } = useShop()
+const filterClass =
+  "px-3 py-1.5 rounded-lg bg-[var(--card)] border border-[var(--border)] text-sm text-[var(--foreground)] placeholder:text-[var(--muted-foreground)] focus:outline-none focus:border-[var(--gold-mid)]/50"
+
+export function AdminPointsPage({
+  actorId,
+  token,
+}: {
+  actorId: string
+  token: string
+}) {
+  const { logStaffAction } = useShop()
   const { notify } = useFeedback()
-  const table = usePagedRows(txs)
+  const [search, setSearch] = useState("")
+  const [term, setTerm] = useState("")
+  const [type, setType] = useState("")
+  const [direction, setDirection] = useState("")
+  const [dateFrom, setDateFrom] = useState("")
+  const [dateTo, setDateTo] = useState("")
+  const table = useApiTable(
+    (page, perPage) =>
+      apiPointPage(token, {
+        page,
+        perPage,
+        search: term,
+        type,
+        direction,
+        date_from: dateFrom,
+        date_to: dateTo,
+      }),
+    [term, type, direction, dateFrom, dateTo].join("|"),
+  )
+  // Search once typing pauses, not on every keystroke.
+  useEffect(() => {
+    const timer = setTimeout(() => setTerm(search.trim()), 300)
+    return () => clearTimeout(timer)
+  }, [search])
+
+  const [customers, setCustomers] = useState<PointCustomer[]>([])
   const [showAdjust, setShowAdjust, modalClosing] = useModalState<boolean>(false)
-  const [adjustUserId, setAdjustUserId] = useState("u1")
+  const [adjustUserId, setAdjustUserId] = useState("")
   const [adjustPoints, setAdjustPoints] = useState("")
   const [adjustReason, setAdjustReason] = useState("")
+  const [error, setError] = useState("")
+  const [saving, setSaving] = useState(false)
+  const notifyRef = useRef(notify)
+  notifyRef.current = notify
 
-  const handleAdjust = () => {
-    const error = applyAdjustment(
-      adjustUserId,
-      Number(adjustPoints),
-      adjustReason,
-    )
-    if (error) {
-      notify(error, "error")
-      return
+  const loadCustomers = async () => {
+    const loaded = await apiPointCustomers(token)
+    setCustomers(loaded)
+    setAdjustUserId((current) => current || (loaded[0]?.id ?? ""))
+  }
+  useEffect(() => {
+    loadCustomers().catch((failure: Error) => notifyRef.current(failure.message, "error"))
+    // Reloads only for a new session; the form refreshes the list itself after an adjustment.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token])
+
+  const openAdjust = () => {
+    setError("")
+    setShowAdjust(true)
+  }
+
+  const handleAdjust = async () => {
+    if (saving) return
+    const customer = customers.find((c) => c.id === adjustUserId)
+    setSaving(true)
+    setError("")
+    try {
+      const row = await apiAdjustPoints(token, adjustUserId, adjustPoints, adjustReason)
+      await loadCustomers()
+      table.reload()
+      logStaffAction(
+        actorId,
+        "POINTS_ADJUSTED",
+        `${row.points > 0 ? "+" : ""}${row.points} points for ${customer?.name}: ${adjustReason.trim()}`,
+      )
+      setAdjustPoints("")
+      setAdjustReason("")
+      setShowAdjust(false)
+      notify(
+        `${customer?.name}'s balance is now ${row.balanceAfter.toLocaleString()} points.`,
+        "success",
+      )
+    } catch (failure) {
+      setError((failure as Error).message)
+    } finally {
+      setSaving(false)
     }
-    setAdjustPoints("")
-    setAdjustReason("")
-    setShowAdjust(false)
-    notify("Point balance adjusted and recorded in the ledger.", "success")
   }
 
   const typeColors: Record<string, string> = {
@@ -47,12 +116,67 @@ export function AdminPointsPage() {
       <div className="flex items-center justify-between">
         <h1 className="font-display text-2xl font-semibold">Points Ledger</h1>
         <button
-          onClick={() => setShowAdjust(true)}
+          onClick={openAdjust}
           className="px-3 py-1.5 rounded-lg bg-[var(--gold-mid)] text-[var(--background)] text-xs font-semibold hover:bg-[var(--gold-light)] transition-colors"
         >
           Manual Adjustment
         </button>
       </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          type="search"
+          aria-label="Search by customer"
+          placeholder="Customer name, email or ID…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className={`${filterClass} w-56`}
+        />
+        <select
+          aria-label="Filter by type"
+          value={type}
+          onChange={(e) => setType(e.target.value)}
+          className={filterClass}
+        >
+          <option value="">All types</option>
+          {Object.keys(typeColors).map((name) => (
+            <option key={name}>{name}</option>
+          ))}
+        </select>
+        <select
+          aria-label="Filter by direction"
+          value={direction}
+          onChange={(e) => setDirection(e.target.value)}
+          className={filterClass}
+        >
+          <option value="">Earned and deducted</option>
+          <option value="earn">Earned (+)</option>
+          <option value="deduct">Deducted (−)</option>
+        </select>
+        <input
+          type="date"
+          aria-label="From date"
+          value={dateFrom}
+          onChange={(e) => setDateFrom(e.target.value)}
+          className={filterClass}
+        />
+        <input
+          type="date"
+          aria-label="To date"
+          value={dateTo}
+          onChange={(e) => setDateTo(e.target.value)}
+          className={filterClass}
+        />
+      </div>
+
+      {table.error && (
+        <p
+          role="alert"
+          className="rounded-lg border border-red-400/40 p-3 text-sm text-red-400"
+        >
+          Couldn't load the points history: {table.error}
+        </p>
+      )}
 
       {showAdjust && (
         <AdminModal
@@ -63,7 +187,7 @@ export function AdminPointsPage() {
           <form
             onSubmit={(event) => {
               event.preventDefault()
-              handleAdjust()
+              void handleAdjust()
             }}
           >
             <div className="grid gap-3">
@@ -75,7 +199,7 @@ export function AdminPointsPage() {
               >
                 {customers.map((c) => (
                   <option key={c.id} value={c.id}>
-                    {c.name}
+                    {c.name} · {c.points.toLocaleString()} pts
                   </option>
                 ))}
               </select>
@@ -90,19 +214,27 @@ export function AdminPointsPage() {
               <input
                 aria-label="Reason for adjustment"
                 value={adjustReason}
+                maxLength={255}
                 onChange={(e) => setAdjustReason(e.target.value)}
                 placeholder="Reason for adjustment"
                 className="px-3 py-2 rounded-lg bg-[var(--secondary)] border border-[var(--border)] text-sm focus:outline-none focus:border-[var(--gold-mid)]/50"
               />
             </div>
+            {error && (
+              <p role="alert" className="mt-3 text-sm text-red-400">
+                {error}
+              </p>
+            )}
             <div className="flex gap-2 mt-3">
               <button
                 type="submit"
-                className="px-4 py-2 rounded-lg bg-[var(--gold-mid)] text-[var(--background)] text-sm font-semibold hover:bg-[var(--gold-light)] transition-colors"
+                disabled={saving}
+                className="px-4 py-2 rounded-lg bg-[var(--gold-mid)] text-[var(--background)] text-sm font-semibold hover:bg-[var(--gold-light)] transition-colors disabled:opacity-60"
               >
-                Apply
+                {saving ? "Applying…" : "Apply"}
               </button>
               <button
+                type="button"
                 onClick={() => setShowAdjust(false)}
                 className="px-4 py-2 rounded-lg bg-[var(--secondary)] text-[var(--muted-foreground)] text-sm transition-colors"
               >
@@ -161,6 +293,16 @@ export function AdminPointsPage() {
                   </td>
                 </tr>
               ))}
+              {!table.rows.length && (
+                <tr>
+                  <td
+                    colSpan={6}
+                    className="px-4 py-6 text-center text-xs text-[var(--muted-foreground)]"
+                  >
+                    {table.loading ? "Loading the points history…" : "No point activity matches."}
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>

@@ -729,11 +729,11 @@ type Shop = State & {
   checkout: (address: string, phone: string) => string | null;
   updateOrderStatus: (id: string, status: OrderStatus) => void;
   redeem: (id: string, variantId?: string) => string | null;
-  adjustPoints: (
-    userId: string,
-    amount: number,
-    reason: string,
-  ) => string | null;
+  /**
+   * Brings a signed-in customer's balance, tier progress and history up to date with the API's ledger.
+   * `rows` are their API ledger rows; activity recorded only in this browser is kept alongside them.
+   */
+  syncCustomerPoints: (userId: string, balance: number, qualifying: number, rows: LoyaltyTransaction[]) => void;
   /**
    * Replaces the catalog with the one loaded from the API. `stock` overrides counts by product id;
    * other products keep the count the store already has. Cart lines for removed products are dropped.
@@ -1592,45 +1592,35 @@ export function ShopProvider({ children }: { children: ReactNode }) {
             logs: staffLog(s, actor, "STOCKTAKE_CANCELLED", `Cancelled stocktake ${id}`),
           };
         }),
-      adjustPoints: (userId, amount, reason) => {
-        const user = state.customers.find((c) => c.id === userId);
-        if (
-          !user ||
-          !Number.isInteger(amount) ||
-          amount === 0 ||
-          !reason.trim()
-        )
-          return "Choose a customer, whole point amount, and reason.";
-        if (user.points + amount < 0)
-          return "Adjustment would make the balance negative.";
-        setState((s) => ({
-          ...s,
-          customers: s.customers.map((c) =>
-            c.id === userId ? { ...c, points: c.points + amount } : c,
-          ),
-          transactions: [
-            {
-              id: uid(),
-              userId,
-              userName: user.name,
-              type: "ADJUST",
-              points: amount,
-              balanceBefore: user.points,
-              balanceAfter: user.points + amount,
-              reason: `Manual adjustment: ${reason.trim()}`,
-              createdAt: date(),
-            },
-            ...s.transactions,
-          ],
-          logs: log(
-            s,
-            user,
-            "POINTS_ADJUSTED",
-            `${amount > 0 ? "+" : ""}${amount} points: ${reason.trim()}`,
-          ),
-        }));
-        return null;
-      },
+      syncCustomerPoints: (userId, balance, qualifying, rows) =>
+        setState((s) => {
+          const user = s.customers.find((c) => c.id === userId);
+          if (!user) return s;
+          const local = s.transactions.filter((t) => t.userId === userId && !t.id.startsWith("api-"));
+          const history = [
+            ...rows.map((t) => ({ ...t, id: `api-${t.id}`, userId, userName: user.name })),
+            ...local,
+          ].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+          // Activity only this browser knows about (demo orders, redemptions) stays on top of the API's numbers.
+          const points = Math.max(0, balance + local.reduce((sum, t) => sum + t.points, 0));
+          const earned = qualifying + local.filter((t) => t.type === "EARN").reduce((sum, t) => sum + t.points, 0);
+          const override = s.tierOverrides[userId];
+          const tier = override && s.tiers[override] ? override : tierFor(earned, s.tiers);
+          const mine = s.transactions.filter((t) => t.userId === userId);
+          if (
+            points === user.points &&
+            tier === user.tier &&
+            earned === s.qualifyingPoints[userId] &&
+            JSON.stringify(history) === JSON.stringify(mine)
+          )
+            return s;
+          return {
+            ...s,
+            customers: s.customers.map((c) => (c.id === userId ? { ...c, points, tier } : c)),
+            qualifyingPoints: { ...s.qualifyingPoints, [userId]: earned },
+            transactions: [...history, ...s.transactions.filter((t) => t.userId !== userId)],
+          };
+        }),
       syncCatalog: (categories, products, stock = {}) =>
         setState((s) => {
           // Stock is not in the API: keep the store's count, matching by id, then by name for seeded products.

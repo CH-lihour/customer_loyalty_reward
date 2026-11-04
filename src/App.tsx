@@ -4,6 +4,7 @@ import { useApiTiers } from "./data/tierSync";
 import { useApiBadges } from "./data/badgeSync";
 import { useApiRewards } from "./data/rewardSync";
 import { useApiCampaigns } from "./data/campaignSync";
+import { useCustomerPoints } from "./data/pointSync";
 import { useFeedback } from "./components/FeedbackProvider";
 import { LoginPage, type LoginRole } from "./components/LoginPage";
 import { CustomerLayout } from "./components/CustomerLayout";
@@ -202,6 +203,11 @@ export default function App() {
     session?.role === "admin" && allowedAdminPages.includes("campaigns")
       ? session.token
       : null,
+  );
+  // A signed-in customer's balance and history come from the API's ledger.
+  useCustomerPoints(
+    session?.role === "customer" ? session.token : null,
+    session?.role === "customer" ? session.userId : null,
   );
 
   const navigate = (next: Route, replace = false) => {
@@ -543,7 +549,9 @@ export default function App() {
           <AdminCategoriesPage actorId={adminUser.id} token={session.token} />
         )}
         {adminPage === "orders" && <AdminOrdersPage />}
-        {adminPage === "points" && <AdminPointsPage />}
+        {adminPage === "points" && (
+          <AdminPointsPage actorId={adminUser.id} token={session.token} />
+        )}
         {adminPage === "tiers" && (
           <AdminTiersPage actorId={adminUser.id} token={session.token} />
         )}

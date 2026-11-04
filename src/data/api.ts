@@ -1,6 +1,6 @@
 import type { LoginRole } from "../components/LoginPage";
 import type { Campaign } from "./shop";
-import type { Badge, Product, ProductCategory, Reward } from "./mockData";
+import type { Badge, LoyaltyTransaction, Product, ProductCategory, Reward } from "./mockData";
 
 /** Laravel API root. Set `VITE_API_URL` to point at another server. */
 const apiUrl = (
@@ -20,6 +20,7 @@ export type ApiProfile = {
   email: string;
   phone?: string | null;
   points_balance?: number;
+  qualifying_points?: number;
   /** Customer only, and only sent on registration. */
   name_kh?: string | null;
   province?: string | null;
@@ -600,4 +601,66 @@ export async function apiBanners(): Promise<Banner[]> {
     linkUrl: c.link_url ?? "",
     multiplier: Number(c.multiplier),
   }));
+}
+
+type ApiPointRow = {
+  id: number;
+  customer_id: number;
+  order_id: number | null;
+  type: LoyaltyTransaction["type"];
+  points: number;
+  balance_before: number;
+  balance_after: number;
+  reason: string | null;
+  created_at: string;
+  customer?: { id: number; name: string; email: string };
+};
+
+const toPointRow = (t: ApiPointRow): LoyaltyTransaction => ({
+  id: String(t.id),
+  userId: String(t.customer_id),
+  userName: t.customer?.name ?? "",
+  type: t.type,
+  points: t.points,
+  balanceBefore: t.balance_before,
+  balanceAfter: t.balance_after,
+  reason: t.reason ?? "",
+  ...(t.order_id && { orderId: String(t.order_id) }),
+  createdAt: t.created_at.slice(0, 10),
+});
+
+/** One page of the points ledger for the admin table, newest first. */
+export async function apiPointPage(
+  token: string,
+  query: PageQuery & { search?: string; type?: string; direction?: string; date_from?: string; date_to?: string },
+): Promise<ApiPage<LoyaltyTransaction>> {
+  const { data, meta } = await fetchPage<ApiPointRow>("/backend/points/transactions", token, query);
+  return { rows: data.map(toPointRow), meta };
+}
+
+/** A customer in the adjustment form's list. */
+export type PointCustomer = { id: string; name: string; email: string; points: number; tier: string };
+
+/** Loads every customer for the adjustment form, with their balance and tier. */
+export async function apiPointCustomers(token: string): Promise<PointCustomer[]> {
+  const rows = await fetchAll<{ id: number; name: string; email: string; points_balance: number; tier: { name: string } | null }>(
+    "/backend/points/customers",
+    token,
+  );
+  return rows.map((c) => ({ id: String(c.id), name: c.name, email: c.email, points: c.points_balance, tier: c.tier?.name ?? "" }));
+}
+
+/** Adds (positive) or removes (negative) a customer's points. Returns the new ledger row. */
+export async function apiAdjustPoints(token: string, customerId: string, points: string, reason: string) {
+  const { data } = await request<{ data: ApiPointRow }>("/backend/points/adjustments", {
+    method: "POST",
+    token,
+    body: { customer_id: Number(customerId), points: points.trim() === "" ? null : Number(points), reason },
+  });
+  return toPointRow(data);
+}
+
+/** The signed-in customer's own points ledger, newest first. */
+export async function apiMyPoints(token: string): Promise<LoyaltyTransaction[]> {
+  return (await fetchAll<ApiPointRow>("/points", token)).map(toPointRow);
 }
