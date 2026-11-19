@@ -38,6 +38,8 @@ export class ApiError extends Error {
   constructor(
     message: string,
     readonly status: number,
+    /** The JSON body of the error response, for flags such as `requires_verification`. */
+    readonly data: Record<string, unknown> = {},
   ) {
     super(message);
   }
@@ -76,6 +78,7 @@ async function request<T>(
     throw new ApiError(
       fieldErrors[0] ?? data.message ?? `Request failed (${response.status}).`,
       response.status,
+      data,
     );
   }
   return data as T;
@@ -99,10 +102,19 @@ export type RegisterFields = {
   referralCode: string;
 };
 
-/** Creates a customer account. The API signs the new customer in and returns their token and profile. */
-export async function apiRegister(fields: RegisterFields) {
+/** What the API answers once it has emailed a sign-up code. */
+export type PendingVerification = {
+  email: string;
+  message: string;
+  /** False when the account was made but the email could not be sent; the customer can resend. */
+  codeSent: boolean;
+  resendInSeconds: number;
+};
+
+/** Creates a customer account. The API emails a 6-digit code; `apiVerifyRegistration` then signs them in. */
+export async function apiRegister(fields: RegisterFields): Promise<PendingVerification> {
   // The API stores blank optional fields as null.
-  const { token, customer } = await request<{ token: string; customer: ApiProfile }>("/register", {
+  const data = await request<{ email: string; message: string; code_sent: boolean; resend_in_seconds: number }>("/register", {
     method: "POST",
     body: {
       name: fields.name,
@@ -114,7 +126,25 @@ export async function apiRegister(fields: RegisterFields) {
       device_name: "KhmerShop web",
     },
   });
+  return { email: data.email, message: data.message, codeSent: data.code_sent, resendInSeconds: data.resend_in_seconds };
+}
+
+/** Confirms the emailed code. The API marks the email verified and returns the new customer's token and profile. */
+export async function apiVerifyRegistration(email: string, code: string) {
+  const { token, customer } = await request<{ token: string; customer: ApiProfile }>("/register/verify", {
+    method: "POST",
+    body: { email, code, device_name: "KhmerShop web" },
+  });
   return { token, customer };
+}
+
+/** Emails a fresh code. A 429 error carries `resend_in_seconds` in its data when asked too soon. */
+export async function apiResendCode(email: string) {
+  const data = await request<{ message: string; resend_in_seconds: number }>("/register/resend", {
+    method: "POST",
+    body: { email },
+  });
+  return { message: data.message, resendInSeconds: data.resend_in_seconds };
 }
 
 export async function apiProfile(role: LoginRole, token: string) {

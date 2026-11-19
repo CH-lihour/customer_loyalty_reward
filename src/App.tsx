@@ -6,7 +6,7 @@ import { useApiRewards } from "./data/rewardSync";
 import { useApiCampaigns } from "./data/campaignSync";
 import { useCustomerPoints } from "./data/pointSync";
 import { useFeedback } from "./components/FeedbackProvider";
-import { LoginPage, type LoginRole } from "./components/LoginPage";
+import { LoginPage, type AuthResult, type LoginRole, type ResendResult } from "./components/LoginPage";
 import { CustomerLayout } from "./components/CustomerLayout";
 import { AddToCartDialog } from "./components/AddToCartDialog";
 import { useModalState } from "./components/useModalState";
@@ -18,6 +18,8 @@ import {
   apiLogout,
   apiProfile,
   apiRegister,
+  apiResendCode,
+  apiVerifyRegistration,
   type ApiProfile,
   type RegisterFields,
 } from "./data/api";
@@ -361,13 +363,16 @@ export default function App() {
     role: LoginRole,
     email: string,
     password: string,
-  ): Promise<string | null> => {
+  ): Promise<AuthResult> => {
     let token: string;
     let profile: ApiProfile;
     try {
       token = await apiLogin(role, email, password);
       profile = await apiProfile(role, token);
     } catch (error) {
+      // A customer who never entered their sign-up code is sent to the code step instead.
+      if (error instanceof ApiError && error.data.requires_verification)
+        return { verifyEmail: String(error.data.email ?? email), message: error.message, sendCode: true };
       return error instanceof ApiError ? error.message : "Sign in failed.";
     }
     // Accounts disabled in the demo admin stay locked out; drop the new token.
@@ -394,19 +399,38 @@ export default function App() {
     return null;
   };
 
-  /** Creates the customer account through the API, which signs them straight in. */
-  const register = async (fields: RegisterFields): Promise<string | null> => {
+  /** Creates the customer account through the API, which emails them a code to confirm before signing in. */
+  const register = async (fields: RegisterFields): Promise<AuthResult> => {
+    try {
+      const pending = await apiRegister(fields);
+      return { verifyEmail: pending.email, message: pending.message, resendInSeconds: pending.codeSent ? pending.resendInSeconds : 0 };
+    } catch (error) {
+      return error instanceof ApiError ? error.message : "Registration failed.";
+    }
+  };
+
+  /** Confirms the emailed code; the API then signs the new customer in. */
+  const verifyRegistration = async (email: string, code: string): Promise<string | null> => {
     let token: string;
     let customer: ApiProfile;
     try {
-      ({ token, customer } = await apiRegister(fields));
+      ({ token, customer } = await apiVerifyRegistration(email, code));
     } catch (error) {
-      return error instanceof ApiError ? error.message : "Registration failed.";
+      return error instanceof ApiError ? error.message : "Verification failed.";
     }
     const userId = shop.linkApiCustomer(customer);
     shop.selectCustomer(userId);
     beginSession({ role: "customer", userId, token });
     return null;
+  };
+
+  const resendCode = async (email: string): Promise<ResendResult> => {
+    try {
+      return { ok: true, ...(await apiResendCode(email)) };
+    } catch (error) {
+      if (!(error instanceof ApiError)) return { ok: false, message: "Could not send a new code.", resendInSeconds: 0 };
+      return { ok: false, message: error.message, resendInSeconds: Number(error.data.resend_in_seconds ?? 0) };
+    }
   };
 
   const logout = () => {
@@ -509,6 +533,8 @@ export default function App() {
         }}
         onLogin={login}
         onRegister={register}
+        onVerify={verifyRegistration}
+        onResend={resendCode}
       />
     );
   }

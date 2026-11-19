@@ -1,4 +1,4 @@
-﻿import { useState, type FormEvent } from "react";
+﻿import { useEffect, useState, type FormEvent } from "react";
 import type { RegisterFields } from "../data/api";
 import { provinces } from "../data/mockData";
 import { useFeedback } from "./FeedbackProvider";
@@ -7,13 +7,27 @@ import { ThemeToggle } from "./ThemeToggle";
 
 export type LoginRole = "customer" | "admin";
 
+/**
+ * An error message, null once signed in, or the email whose sign-up code still has to be entered.
+ * `sendCode` asks the page to email a fresh code first; `resendInSeconds` is the wait before another can be sent.
+ */
+export type AuthResult = string | null | { verifyEmail: string; message: string; resendInSeconds?: number; sendCode?: boolean };
+
+export type ResendResult = { ok: boolean; message: string; resendInSeconds: number };
+
 interface Props {
   role?: LoginRole;
-  onLogin: (role: LoginRole, email: string, password: string) => Promise<string | null>;
-  /** Customer sign-up. Returns an error message, or null once the new account is signed in. */
-  onRegister?: (fields: RegisterFields) => Promise<string | null>;
+  onLogin: (role: LoginRole, email: string, password: string) => Promise<AuthResult>;
+  /** Customer sign-up. Returns an error message, or the email the API sent a code to. */
+  onRegister?: (fields: RegisterFields) => Promise<AuthResult>;
+  /** Confirms the emailed code. Returns an error message, or null once the new account is signed in. */
+  onVerify?: (email: string, code: string) => Promise<string | null>;
+  onResend?: (email: string) => Promise<ResendResult>;
   onBrowse: () => void;
 }
+
+/** Digits in the emailed sign-up code. */
+const codeLength = 6;
 
 const emptyRegistration: RegisterFields = {
   name: "",
@@ -46,7 +60,7 @@ const formStyles: Record<LoginRole, { label: string; input: string; toggle: stri
   },
 };
 
-export function LoginPage({ role = "customer", onLogin, onRegister, onBrowse }: Props) {
+export function LoginPage({ role = "customer", onLogin, onRegister, onVerify, onResend, onBrowse }: Props) {
   const { notify } = useFeedback();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -55,7 +69,79 @@ export function LoginPage({ role = "customer", onLogin, onRegister, onBrowse }: 
   const [error, setError] = useState("");
   const [registering, setRegistering] = useState(false);
   const [registration, setRegistration] = useState(emptyRegistration);
+  const [verifyEmail, setVerifyEmail] = useState<string | null>(null);
+  const [verifyNote, setVerifyNote] = useState("");
+  const [code, setCode] = useState("");
+  const [resendIn, setResendIn] = useState(0);
   const styles = formStyles[role];
+
+  // Counts down the wait before another code may be sent.
+  useEffect(() => {
+    if (resendIn <= 0) return;
+    const timer = window.setTimeout(() => setResendIn((seconds) => seconds - 1), 1000);
+    return () => window.clearTimeout(timer);
+  }, [resendIn]);
+
+  const resend = async (email: string) => {
+    if (!onResend || submitting) return;
+    setSubmitting(true);
+    const result = await onResend(email);
+    setSubmitting(false);
+    setResendIn(result.resendInSeconds);
+    if (result.ok) {
+      setError("");
+      setCode("");
+      setVerifyNote(result.message);
+      notify(result.message, "success");
+    } else if (result.resendInSeconds > 0) {
+      setError("");
+      setVerifyNote(`We already sent a code to ${email}. You can ask for another in a moment.`);
+    } else {
+      setError(result.message);
+      notify(result.message, "error");
+    }
+  };
+
+  /** Handles a sign-in or sign-up answer: shows the error, opens the code step, or does nothing once signed in. */
+  const handleAuthResult = (result: AuthResult, welcome: string) => {
+    if (typeof result === "string") {
+      setError(result);
+      notify(result, "error");
+      return;
+    }
+    setError("");
+    if (!result) {
+      notify(welcome, "success");
+      return;
+    }
+    setVerifyEmail(result.verifyEmail);
+    setVerifyNote(result.message);
+    setCode("");
+    setResendIn(result.resendInSeconds ?? 0);
+    if (result.sendCode) void resend(result.verifyEmail);
+  };
+
+  const submitCode = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (submitting || !onVerify || !verifyEmail) return;
+    setSubmitting(true);
+    const result = await onVerify(verifyEmail, code);
+    setSubmitting(false);
+    if (result) {
+      setError(result);
+      notify(result, "error");
+    } else {
+      setError("");
+      notify("Welcome to KhmerShop! Your account is ready.", "success");
+    }
+  };
+
+  const leaveVerification = () => {
+    setVerifyEmail(null);
+    setCode("");
+    setError("");
+    setResendIn(0);
+  };
 
   const switchMode = (toRegister: boolean) => {
     setRegistering(toRegister);
@@ -78,13 +164,7 @@ export function LoginPage({ role = "customer", onLogin, onRegister, onBrowse }: 
       referralCode: registration.referralCode.trim(),
     });
     setSubmitting(false);
-    if (result) {
-      setError(result);
-      notify(result, "error");
-    } else {
-      setError("");
-      notify("Welcome to KhmerShop! Your account is ready.", "success");
-    }
+    handleAuthResult(result, "Welcome to KhmerShop! Your account is ready.");
   };
 
   const submitLogin = async (event: FormEvent<HTMLFormElement>) => {
@@ -93,18 +173,7 @@ export function LoginPage({ role = "customer", onLogin, onRegister, onBrowse }: 
     setSubmitting(true);
     const result = await onLogin(role, email.trim(), password);
     setSubmitting(false);
-    if (result) {
-      setError(result);
-      notify(result, "error");
-    } else {
-      setError("");
-      notify(
-        role === "admin"
-          ? "Welcome to the admin dashboard."
-          : "Welcome back to KhmerShop.",
-        "success",
-      );
-    }
+    handleAuthResult(result, role === "admin" ? "Welcome to the admin dashboard." : "Welcome back to KhmerShop.");
   };
 
   const form = (
@@ -249,6 +318,48 @@ export function LoginPage({ role = "customer", onLogin, onRegister, onBrowse }: 
     </form>
   );
 
+  const verifyForm = verifyEmail && (
+    <form onSubmit={submitCode} className="space-y-4">
+      <p className="text-sm text-[var(--muted-foreground)]">{verifyNote}</p>
+      <label className={styles.label}>
+        Verification code
+        <input
+          required
+          autoFocus
+          inputMode="numeric"
+          autoComplete="one-time-code"
+          pattern={`\\d{${codeLength}}`}
+          maxLength={codeLength}
+          className={`mt-1.5 ${styles.input} text-center font-mono text-2xl tracking-[0.5em]`}
+          placeholder="••••••"
+          value={code}
+          onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, codeLength))}
+        />
+      </label>
+      {error && (
+        <p role="alert" className="text-sm text-red-400">
+          {error}
+        </p>
+      )}
+      <button type="submit" disabled={submitting || code.length !== codeLength} className={styles.submit}>
+        {submitting ? "Checking…" : "Verify and continue"}
+      </button>
+      <div className="flex items-center justify-between text-sm">
+        <button
+          type="button"
+          onClick={() => resend(verifyEmail)}
+          disabled={submitting || resendIn > 0}
+          className="font-semibold text-[var(--gold-mid)] hover:underline disabled:cursor-not-allowed disabled:text-[var(--muted-foreground)] disabled:no-underline"
+        >
+          {resendIn > 0 ? `Resend code in ${resendIn}s` : "Resend code"}
+        </button>
+        <button type="button" onClick={leaveVerification} className="text-[var(--muted-foreground)] hover:underline">
+          Use a different email
+        </button>
+      </div>
+    </form>
+  );
+
   const canRegister = role === "customer" && !!onRegister;
 
   /** The theme switch, pinned to the same top-right corner of the screen on both login pages. */
@@ -336,16 +447,18 @@ export function LoginPage({ role = "customer", onLogin, onRegister, onBrowse }: 
           <div className="animate-page-enter w-full max-w-md">
             <div className="mb-5 sm:mb-7">
               <h2 className="font-display text-2xl font-semibold">
-                {registering ? "Create your account" : "Customer sign in"}
+                {verifyForm ? "Check your email" : registering ? "Create your account" : "Customer sign in"}
               </h2>
               <p className="mt-1 text-sm text-[var(--muted-foreground)]">
-                {registering
-                  ? "Join KhmerShop to earn points on every order."
-                  : "Sign in with your KhmerShop account."}
+                {verifyForm
+                  ? `Enter the ${codeLength}-digit code we sent to ${verifyEmail}.`
+                  : registering
+                    ? "Join KhmerShop to earn points on every order."
+                    : "Sign in with your KhmerShop account."}
               </p>
             </div>
-            {registering && canRegister ? registerForm : form}
-            {canRegister && (
+            {verifyForm || (registering && canRegister ? registerForm : form)}
+            {canRegister && !verifyForm && (
               <p className="mt-4 text-center text-sm text-[var(--muted-foreground)]">
                 {registering ? "Already have an account?" : "New to KhmerShop?"}{" "}
                 <button
