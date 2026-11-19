@@ -1,11 +1,15 @@
-﻿import { useAnalytics } from "../../data/analytics";
+﻿import { useAnalytics, useDashboardStats } from "../../data/analytics";
 import { useShop } from "../../data/shop";
 import { TierBadge } from "../../components/TierBadge";
 import { Icon } from "../../components/Icon";
 
-export function AdminDashboardPage() {
-  const analytics = useAnalytics();
-  const { customers, orders, logs: activityLog } = useShop();
+export function AdminDashboardPage({ token = null }: { token?: string | null }) {
+  const local = useAnalytics();
+  const { orders, logs } = useShop();
+  // Signed in as staff, every number comes from the API; the demo store is the fallback.
+  const { stats, error, live } = useDashboardStats(token, "dashboard");
+  const analytics = live ? (stats ?? { ...local, ...emptyStats }) : local;
+  const activityLog = live ? (stats?.recentActivity ?? []) : logs;
   const statCards = [
     {
       label: "Total Customers",
@@ -47,7 +51,7 @@ export function AdminDashboardPage() {
 
   const tierDist = analytics.tierCounts;
 
-  const recentOrders = orders.slice(0, 5);
+  const recentOrders = live ? (stats?.recentOrders ?? []) : orders.slice(0, 5);
 
   return (
     <div className="flex flex-col gap-6">
@@ -56,6 +60,7 @@ export function AdminDashboardPage() {
         <p className="text-sm text-[var(--muted-foreground)] mt-0.5">
           KhmerShop Platform Overview
         </p>
+        {error && <p role="alert" className="mt-2 text-sm text-red-400">{error}</p>}
       </div>
 
       {/* Stat grid */}
@@ -85,7 +90,7 @@ export function AdminDashboardPage() {
           <h3 className="font-semibold mb-4">Tier Distribution</h3>
           <div className="flex flex-col gap-3">
             {tierDist.map(({ tier, count }) => {
-              const pct = Math.round((count / analytics.totalCustomers) * 100);
+              const pct = analytics.totalCustomers ? Math.round((count / analytics.totalCustomers) * 100) : 0;
               return (
                 <div key={tier}>
                   <div className="flex justify-between items-center mb-1">
@@ -171,3 +176,10 @@ export function AdminDashboardPage() {
     </div>
   );
 }
+
+/** Shown while the API numbers load, so the cards don't flash the demo store's numbers. */
+const emptyStats = {
+  totalCustomers: 0, activeCustomers: 0, totalOrders: 0, completedOrders: 0, totalPointsIssued: 0, totalPointsRedeemed: 0,
+  tierCounts: [], totalRewardsRedeemed: 0, referralConversions: 0, repeatCustomers: 0, oneTimeCustomers: 0,
+  inactive30: 0, inactive60: 0, inactive90: 0,
+};

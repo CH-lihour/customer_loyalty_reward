@@ -1,12 +1,17 @@
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useShop } from "../../data/shop";
 import { meetsTier } from "../../data/tiers";
 import { TierBadge } from "../../components/TierBadge";
 import { useFeedback } from "../../components/FeedbackProvider";
 import { ImagePreviewDialog } from "../../components/ImagePreviewDialog";
 import { useModalState } from "../../components/useModalState";
-import { openRedemptionStatuses, variantIds, variantLabel, type Redemption } from "../../data/stock";
+import { openRedemptionStatuses, variantIds, variantLabel, type Redemption, type StockItem } from "../../data/stock";
 import type { Reward } from "../../data/mockData";
+import { apiCancelMyRedemption, apiMyRedemptions, apiRedeem, apiStorefrontRewards, type ApiRedemptionRow } from "../../data/api";
+import { refreshCustomerPoints } from "../../data/pointSync";
+
+/** API rewards have no stock settings of their own; below this many left, the card says "Only N left". */
+const apiLowStock = 5;
 
 const statusLabels: Record<Redemption["status"], { text: string; tone: string }> = {
   RESERVED: { text: "Reserved for you", tone: "bg-purple-400/10 text-purple-300" },
@@ -17,22 +22,51 @@ const statusLabels: Record<Redemption["status"], { text: string; tone: string }>
   RETURNED: { text: "Returned", tone: "bg-cyan-400/10 text-cyan-400" },
 };
 
-export function RewardsPage() {
+export function RewardsPage({ token = null }: { token?: string | null }) {
   const shop = useShop();
   const { notify, confirm } = useFeedback();
+  // The catalog comes from the API for everyone; signed in through it, redemptions do too. The demo store is the fallback.
+  const [apiRewards, setApiRewards] = useState<Reward[] | null>(null);
+  const [apiHistory, setApiHistory] = useState<ApiRedemptionRow[] | null>(null);
+  const [loadError, setLoadError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const live = apiRewards !== null;
+  const loadApi = useCallback(async () => {
+    const [rewards, history] = await Promise.all([apiStorefrontRewards(), token ? apiMyRedemptions(token) : Promise.resolve(null)]);
+    setApiRewards(rewards);
+    setApiHistory(history);
+  }, [token]);
+  useEffect(() => {
+    let cancelled = false;
+    loadApi().then(
+      () => !cancelled && setLoadError(""),
+      (e: Error) => !cancelled && setLoadError(e.message),
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [loadApi]);
+  const rewards = apiRewards ?? shop.rewards;
   const [filter, setFilter] = useState<"available" | "all">("available");
   const [variants, setVariants] = useState<Record<string, string>>({});
   const [previewId, setPreviewId, previewClosing] = useModalState<string | null>(null);
-  const previewReward = shop.rewards.find((reward) => reward.id === previewId);
+  const previewReward = rewards.find((reward) => reward.id === previewId);
   const today = new Date().toISOString().slice(0, 10);
   const user = shop.currentUser;
 
   const variantOf = (r: Reward) => variants[r.id] ?? variantIds(shop.stockItemFor(r.id))[0];
-  const alreadyRedeemed = (id: string) =>
-    shop.redemptions.some((r) => r.userId === user.id && r.rewardId === id && openRedemptionStatuses.includes(r.status));
+  // The API lets a reward be redeemed again once the last one was delivered; only a held one blocks it.
+  const alreadyRedeemed = (id: string) => live
+    ? (apiHistory ?? []).some((r) => r.rewardId === id && r.status === "RESERVED")
+    : shop.redemptions.some((r) => r.userId === user.id && r.rewardId === id && openRedemptionStatuses.includes(r.status));
+  // API rewards count one stock number, with no options, backorders or hiding when sold out.
+  const itemFor = (r: Reward): StockItem => live
+    ? { ...shop.stockItemFor(r.id), variants: [], allowBackorder: false, outOfStock: "disable", lowStockThreshold: apiLowStock }
+    : shop.stockItemFor(r.id);
+  const availableOf = (r: Reward, variantId?: string) => live ? r.stock : shop.availableFor(r.id, variantId);
   const state = (r: Reward, variantId = variantOf(r)) => {
-    const item = shop.stockItemFor(r.id);
-    const available = shop.availableFor(r.id, variantId);
+    const item = itemFor(r);
+    const available = availableOf(r, variantId);
     const stocked = available > 0 || item.allowBackorder;
     const tierOk = meetsTier(shop.tiers, user.tier, r.minTier);
     const blocker = alreadyRedeemed(r.id) ? "Already Redeemed"
@@ -42,15 +76,16 @@ export function RewardsPage() {
     return { item, variantId, available, eligible: !blocker, blocker, backorder: available < 1 };
   };
   // Out-of-stock rewards set to "hide" leave the storefront entirely, unless backorders are allowed.
-  const visible = shop.rewards.filter((r) => {
+  const visible = rewards.filter((r) => {
     if (!r.active || (r.expiresAt && r.expiresAt < today)) return false;
-    const item = shop.stockItemFor(r.id);
-    return !(item.outOfStock === "hide" && !item.allowBackorder && shop.availableFor(r.id) < 1);
+    const item = itemFor(r);
+    return !(item.outOfStock === "hide" && !item.allowBackorder && availableOf(r) < 1);
   });
   // A reward stays listed while any of its options can be redeemed, so picking a sold-out option doesn't hide the card.
-  const displayed = visible.filter((r) => filter === "all" || variantIds(shop.stockItemFor(r.id)).some((v) => state(r, v).eligible));
-  const history = shop.redemptions.filter((r) => r.userId === user.id);
-  const myRequests = shop.restockRequests.filter((r) => r.userId === user.id);
+  const displayed = visible.filter((r) => filter === "all" || (live ? state(r, "").eligible : variantIds(shop.stockItemFor(r.id)).some((v) => state(r, v).eligible)));
+  const history: (typeof shop.redemptions[number] & { apiId?: string })[] = live && token ? (apiHistory ?? []) : shop.redemptions.filter((r) => r.userId === user.id);
+  // Notify-me requests are kept in this browser only, so they are left out when the catalog comes from the API.
+  const myRequests = live ? [] : shop.restockRequests.filter((r) => r.userId === user.id);
   const backInStock = myRequests.filter((r) => r.notifiedAt);
 
   const redeem = (r: Reward) => {
@@ -61,17 +96,39 @@ export function RewardsPage() {
       : `Redeem ${r.name}${option} for ${r.pointsCost} points? It will be held for you for ${shop.stockSettings.reservationHours} hours while we prepare it.`,
     ).then((ok) => {
       if (!ok) return;
+      if (live) {
+        if (!token) return notify("Sign in to redeem rewards.", "error");
+        return void runApi(() => apiRedeem(token, r.id));
+      }
       const error = shop.redeem(r.id, variantId);
       notify(error ?? (backorder ? `${r.name} backordered. We'll reserve it when stock arrives.` : `Redeemed ${r.name}. It's reserved for you.`), error ? "error" : "success");
     });
+  };
+  // Runs a redeem or cancel against the API, then reloads the catalog, the history and the points balance.
+  const runApi = async (action: () => Promise<{ message: string }>) => {
+    if (!token || busy) return;
+    setBusy(true);
+    try {
+      const { message } = await action();
+      notify(message, "success");
+    } catch (e) {
+      notify((e as Error).message, "error");
+    } finally {
+      await Promise.all([
+        loadApi().catch(() => {}),
+        refreshCustomerPoints(token, user.id, shop.syncCustomerPoints).catch(() => {}),
+      ]);
+      setBusy(false);
+    }
   };
   const notifyMe = (r: Reward) => {
     const error = shop.requestRestock(r.id, variantOf(r));
     notify(error ?? `We'll let you know when ${r.name} is back in stock.`, error ? "info" : "success");
   };
-  const cancel = (r: Redemption) => {
+  const cancel = (r: Redemption & { apiId?: string }) => {
     void confirm(`Cancel ${r.rewardName}? Your ${r.points} points will be refunded.`).then((ok) => {
       if (!ok) return;
+      if (r.apiId && token) return void runApi(() => apiCancelMyRedemption(token, r.apiId!));
       const error = shop.cancelMyRedemption(r.id);
       notify(error ?? `Cancelled. ${r.points} points refunded.`, error ? "error" : "success");
     });
@@ -98,8 +155,10 @@ export function RewardsPage() {
         </div>
       </div>
 
+      {loadError && <p role="alert" className="text-sm text-red-400">{loadError}</p>}
+
       {backInStock.map((request) => {
-        const reward = shop.rewards.find((r) => r.id === request.rewardId);
+        const reward = rewards.find((r) => r.id === request.rewardId);
         if (!reward) return null;
         return (
           <div key={request.id} role="status" className="flex items-center justify-between gap-3 rounded-xl border border-green-400/30 bg-green-400/10 px-4 py-3 text-sm">
@@ -125,7 +184,7 @@ export function RewardsPage() {
                 <h2 className="font-semibold">{r.name}</h2>
                 <p className="text-xs text-[var(--muted-foreground)]">{r.nameKh}</p>
                 <p className="text-sm text-[var(--muted-foreground)]">{r.description}</p>
-                {item.variants.length > 0 && (
+                {!live && item.variants.length > 0 && (
                   <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label={`${r.name} options`}>
                     {item.variants.map((v) => {
                       const left = shop.availableFor(r.id, v.id);
@@ -145,11 +204,11 @@ export function RewardsPage() {
                     {available > 0 ? (available <= item.lowStockThreshold ? `Only ${available} left` : `${available} left`) : item.allowBackorder ? "Backorder only" : "Out of stock"}
                   </span>
                 </div>
-                <button disabled={!eligible} onClick={() => redeem(r)}
+                <button disabled={!eligible || busy} onClick={() => redeem(r)}
                   className="w-full rounded-lg bg-[var(--gold-mid)] py-2 font-semibold text-[var(--background)] disabled:bg-[var(--secondary)] disabled:text-[var(--muted-foreground)]">
                   {eligible ? (backorder ? "Backorder →" : "Redeem →") : blocker}
                 </button>
-                {available < 1 && !item.allowBackorder && !alreadyRedeemed(r.id) && (
+                {!live && available < 1 && !item.allowBackorder && !alreadyRedeemed(r.id) && (
                   <button type="button" disabled={waiting} onClick={() => notifyMe(r)}
                     className="w-full rounded-lg border border-[var(--border)] py-1.5 text-xs text-[var(--gold-mid)] disabled:text-[var(--muted-foreground)]">
                     {waiting ? "We'll notify you when it's back" : "Notify me when back in stock"}
@@ -178,7 +237,7 @@ export function RewardsPage() {
               <span className="flex items-center gap-3">
                 <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${status.tone}`}>{status.text}</span>
                 {(r.status === "RESERVED" || r.status === "BACKORDERED") && (
-                  <button type="button" onClick={() => cancel(r)} className="text-xs text-red-400 hover:underline">Cancel</button>
+                  <button type="button" disabled={busy} onClick={() => cancel(r)} className="text-xs text-red-400 hover:underline">Cancel</button>
                 )}
                 <span className={r.status === "CANCELLED" || r.status === "EXPIRED" ? "text-[var(--muted-foreground)] line-through" : "text-red-400"}>−{r.points} pts</span>
               </span>

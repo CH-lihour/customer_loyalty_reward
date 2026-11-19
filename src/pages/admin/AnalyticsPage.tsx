@@ -1,9 +1,16 @@
-﻿import { useAnalytics } from "../../data/analytics";
+﻿import { useAnalytics, useDashboardStats } from "../../data/analytics";
 import { useShop } from "../../data/shop";
 import { TierBadge } from "../../components/TierBadge";
 import { Icon } from "../../components/Icon";
 
 const riskIndicator = (lastOrder: string) => {
+  if (!lastOrder)
+    return {
+      label: "No Orders",
+      color: "text-[var(--muted-foreground)] bg-[var(--secondary)]",
+      note: "Never ordered",
+      days: null,
+    };
   const days = Math.floor(
     (Date.now() - new Date(lastOrder).getTime()) / 86400000,
   );
@@ -29,12 +36,18 @@ const riskIndicator = (lastOrder: string) => {
   };
 };
 
-export function AdminAnalyticsPage() {
-  const analytics = useAnalytics();
-  const { customers } = useShop();
-  const topCustomers = [...customers]
-    .sort((a, b) => b.totalSpent - a.totalSpent)
-    .slice(0, 5);
+export function AdminAnalyticsPage({ token = null }: { token?: string | null }) {
+  const local = useAnalytics();
+  const { customers: storeCustomers } = useShop();
+  // Signed in as staff, every number comes from the API; the demo store is the fallback.
+  const { stats, error, live } = useDashboardStats(token, "analytics");
+  const analytics = live
+    ? (stats ?? { ...local, totalCustomers: 0, activeCustomers: 0, repeatCustomers: 0, oneTimeCustomers: 0, totalPointsIssued: 0, totalPointsRedeemed: 0, totalRewardsRedeemed: 0, referralConversions: 0, completedOrders: 0, inactive30: 0, inactive60: 0, inactive90: 0 })
+    : local;
+  const topCustomers = live
+    ? (stats?.topCustomers ?? [])
+    : [...storeCustomers].sort((a, b) => b.totalSpent - a.totalSpent).slice(0, 5);
+  const customers = live ? (stats?.engagement ?? []) : storeCustomers;
 
   return (
     <div className="flex flex-col gap-6">
@@ -43,6 +56,7 @@ export function AdminAnalyticsPage() {
         <p className="text-sm text-[var(--muted-foreground)] mt-0.5">
           Customer retention & loyalty program performance
         </p>
+        {error && <p role="alert" className="mt-2 text-sm text-red-400">{error}</p>}
       </div>
 
       {/* KPI row */}
@@ -173,7 +187,7 @@ export function AdminAnalyticsPage() {
                   <div className="font-medium">{c.name}</div>
                   <div className="flex items-center gap-2">
                     <span className="text-[var(--muted-foreground)]">
-                      {risk.days}d ago
+                      {risk.days === null ? "—" : `${risk.days}d ago`}
                     </span>
                     <span
                       className={`font-semibold px-2 py-0.5 rounded-full ${risk.color}`}

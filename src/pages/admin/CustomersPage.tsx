@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useShop } from "../../data/shop"
 import { useFeedback } from "../../components/FeedbackProvider"
 import type { Tier } from "../../data/mockData"
@@ -8,8 +8,12 @@ import { AdminModal } from "../../components/AdminModal"
 import { useModalState } from "../../components/useModalState"
 import { ActionIconButton } from "../../components/ActionIconButton"
 import { TablePagination, usePagedRows } from "../../components/TablePagination"
+import { apiCustomerPage, apiSetCustomerTier, apiStorefrontTiers, type AdminTier } from "../../data/api"
+import { useApiTable } from "../../data/apiTable"
 
 const riskLabel = (lastOrder: string) => {
+  if (!lastOrder)
+    return { label: "No Orders", color: "text-[var(--muted-foreground)] bg-[var(--secondary)]" }
   const days = Math.floor(
     (Date.now() - new Date(lastOrder).getTime()) / 86400000,
   )
@@ -20,11 +24,25 @@ const riskLabel = (lastOrder: string) => {
   return { label: "High Risk", color: "text-red-400 bg-red-400/10" }
 }
 
-export function AdminCustomersPage() {
-  const { customers, tiers, tierOverrides, overrideTier } = useShop()
+export function AdminCustomersPage({ token = null }: { token?: string | null }) {
+  const { customers: storeCustomers, tiers, tierOverrides, overrideTier } = useShop()
   const { notify } = useFeedback()
   const [search, setSearch] = useState("")
   const [tierFilter, setTierFilter] = useState("All")
+  const [saving, setSaving] = useState(false)
+  // With a staff token the table lists the customers registered in the API, paged and filtered there.
+  const live = Boolean(token)
+  const [apiTiers, setApiTiers] = useState<AdminTier[]>([])
+  useEffect(() => {
+    if (token) apiStorefrontTiers().then(setApiTiers, () => {})
+  }, [token])
+  const apiTable = useApiTable(
+    (page, perPage) => token
+      ? apiCustomerPage(token, { page, perPage, search: search.trim(), tier: tierFilter === "All" ? "" : tierFilter })
+      : Promise.resolve({ rows: [], meta: { current_page: 1, per_page: perPage, total: 0, last_page: 1 } }),
+    `${search.trim()}|${tierFilter}`,
+  )
+  const customers = live ? apiTable.rows : storeCustomers
   const [editingId, setEditingId, modalClosing] = useModalState<string | null>(null)
   const [selectedTier, setSelectedTier] = useState("Auto")
   const [reason, setReason] = useState("")
@@ -34,11 +52,11 @@ export function AdminCustomersPage() {
 
   const openTierEditor = (id: string) => {
     setEditingId(id)
-    setSelectedTier(tierOverrides[id] ?? "Auto")
+    setSelectedTier(live ? "Auto" : tierOverrides[id] ?? "Auto")
     setReason("")
   }
 
-  const filtered = customers.filter((c) => {
+  const filtered = live ? customers : customers.filter((c) => {
     const matchSearch =
       !search ||
       c.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -46,7 +64,23 @@ export function AdminCustomersPage() {
     const matchTier = tierFilter === "All" || c.tier === tierFilter
     return matchSearch && matchTier
   })
-  const table = usePagedRows(filtered)
+  const localTable = usePagedRows(filtered)
+  const table = live ? { rows: apiTable.rows, pagination: apiTable.pagination } : localTable
+  const saveApiTier = async (customerId: string, name: string, reasonText: string) => {
+    if (!token) return
+    const tierId = selectedTier === "Auto" ? null : Number(apiTiers.find((t) => t.name === selectedTier)?.id)
+    setSaving(true)
+    try {
+      await apiSetCustomerTier(token, customerId, tierId, reasonText)
+      notify(`${name}'s tier updated.`, "success")
+      setEditingId(null)
+      apiTable.reload()
+    } catch (e) {
+      notify((e as Error).message, "error")
+    } finally {
+      setSaving(false)
+    }
+  }
 
   return (
     <div className="flex flex-col gap-5">
@@ -140,13 +174,20 @@ export function AdminCustomersPage() {
                     </td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-2">
-                        <span className="text-xs text-[var(--muted-foreground)]">{tierOverrides[c.id] ?? "Auto"}</span>
+                        {!live && <span className="text-xs text-[var(--muted-foreground)]">{tierOverrides[c.id] ?? "Auto"}</span>}
                         <ActionIconButton action="edit" label={`Edit ${c.name}'s tier`} onClick={() => openTierEditor(c.id)} />
                       </div>
                     </td>
                   </tr>
                 )
               })}
+              {live && !apiTable.loading && !apiTable.rows.length && (
+                <tr>
+                  <td colSpan={8} className="px-4 py-8 text-center text-sm text-[var(--muted-foreground)]">
+                    {apiTable.error || "No customers found."}
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -166,6 +207,10 @@ export function AdminCustomersPage() {
                 notify("Enter a reason for the tier change.", "error")
                 return
               }
+              if (live) {
+                void saveApiTier(editingCustomer.id, editingCustomer.name, reason.trim())
+                return
+              }
               overrideTier(
                 editingCustomer.id,
                 selectedTier === "Auto" ? undefined : selectedTier as Tier,
@@ -182,7 +227,7 @@ export function AdminCustomersPage() {
                 onChange={(event) => setSelectedTier(event.target.value)}
                 className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--secondary)] px-3 py-2"
               >
-                <option>Auto</option>
+                <option value="Auto">{live ? "Auto (from qualifying points)" : "Auto"}</option>
                 {tierOrder(tiers).map((t) => (
                   <option key={t}>{t}</option>
                 ))}
@@ -200,6 +245,7 @@ export function AdminCustomersPage() {
             <div className="flex gap-2">
               <button
                 type="submit"
+                disabled={saving}
                 className="rounded-lg bg-[var(--gold-mid)] px-4 py-2 font-semibold text-[var(--background)]"
               >
                 Save Override

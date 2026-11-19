@@ -6,6 +6,8 @@ import { TablePagination, usePagedRows } from "../../components/TablePagination"
 import { StockMovementDialog, type StockFormMode, type StockFormPreset } from "../../components/StockMovementDialog";
 import { EmptyRow, PageHeader, filterControl, formatDateTime, rowClass, tableClass, theadClass, timeLeft, useStockAccess } from "../../components/StockUi";
 import { levelKey, type Redemption, type RedemptionStatus } from "../../data/stock";
+import { apiCancelRedemption, apiExtendRedemption, apiFulfillRedemption, apiRedemptionPage, type ApiRedemptionRow, type RedemptionStats } from "../../data/api";
+import { useApiTable } from "../../data/apiTable";
 
 type Tab = "reserved" | "backordered" | "notify" | "history";
 const statusTones: Record<RedemptionStatus, string> = {
@@ -18,15 +20,28 @@ const statusTones: Record<RedemptionStatus, string> = {
 };
 const linkButton = "text-xs font-medium hover:underline disabled:cursor-not-allowed disabled:opacity-40 disabled:no-underline";
 
-export function AdminFulfillmentPage({ actorId }: { actorId: string }) {
+export function AdminFulfillmentPage({ actorId, token = null }: { actorId: string; token?: string | null }) {
   const shop = useShop();
   const { notify, prompt } = useFeedback();
   const { can } = useStockAccess(actorId);
   const [tab, setTab] = useState<Tab>("reserved");
+  // With a staff token, redemptions come from the API: one stock count per reward, no locations, serials or backorders.
+  const live = Boolean(token);
+  const [apiStats, setApiStats] = useState<RedemptionStats | null>(null);
+  const apiTable = useApiTable<ApiRedemptionRow>(
+    (page, perPage) => token && (tab === "reserved" || tab === "history")
+      ? apiRedemptionPage(token, { page, perPage, ...(tab === "reserved" ? { status: "RESERVED" } : { closed: 1 }) }).then((result) => {
+          setApiStats(result.stats);
+          return result;
+        })
+      : Promise.resolve({ rows: [], meta: { current_page: 1, per_page: perPage, total: 0, last_page: 1 } }),
+    `${tab}`,
+  );
+  const apiRow = (r: Redemption) => r as ApiRedemptionRow;
   const [locationId, setLocationId] = useState("all");
   const [serialChoice, setSerialChoice] = useState<Record<string, string>>({});
   const [dialog, setDialog, dialogClosing] = useModalState<{ mode: StockFormMode; preset?: StockFormPreset } | null>(null);
-  const customer = (id: string) => shop.customers.find((c) => c.id === id)?.name ?? id;
+  const customer = (id: string, r?: Redemption) => (live && r ? apiRow(r).customerName : null) ?? shop.customers.find((c) => c.id === id)?.name ?? id;
   const locName = (id?: string) => shop.stockLocations.find((l) => l.id === id)?.name ?? "—";
   const inLocation = (r: Redemption) => locationId === "all" || r.locationId === locationId;
 
@@ -42,19 +57,47 @@ export function AdminFulfillmentPage({ actorId }: { actorId: string }) {
     history: usePagedRows(history),
   };
   const backorderOffset = (pagedTables.backordered.pagination.page - 1) * pagedTables.backordered.pagination.pageSize;
-  const tabs: { id: Tab; label: string; count: number }[] = [
-    { id: "reserved", label: "To fulfil", count: reserved.length },
-    { id: "backordered", label: "Backordered", count: backordered.length },
-    { id: "notify", label: "Notify me", count: requests.filter((r) => !r.notifiedAt).length },
-    { id: "history", label: "History", count: history.length },
-  ];
+  const closedCount = apiStats ? apiStats.FULFILLED + apiStats.CANCELLED + apiStats.EXPIRED : 0;
+  const tabs: { id: Tab; label: string; count: number }[] = live
+    ? [
+        { id: "reserved", label: "To fulfil", count: apiStats?.RESERVED ?? 0 },
+        { id: "history", label: "History", count: closedCount },
+      ]
+    : [
+        { id: "reserved", label: "To fulfil", count: reserved.length },
+        { id: "backordered", label: "Backordered", count: backordered.length },
+        { id: "notify", label: "Notify me", count: requests.filter((r) => !r.notifiedAt).length },
+        { id: "history", label: "History", count: history.length },
+      ];
+  const rowsFor = (which: "reserved" | "history") => live ? (tab === which ? apiTable.rows : []) : pagedTables[which].rows;
+  const emptyFor = (which: "reserved" | "history") => live ? !apiTable.loading && !apiTable.rows.length : which === "reserved" ? !reserved.length : !history.length;
+  const runApi = async (action: () => Promise<void>, success: string) => {
+    try {
+      await action();
+      notify(success, "success");
+    } catch (e) {
+      notify((e as Error).message, "error");
+    }
+    apiTable.reload();
+  };
 
   const run = (result: string | null, success: string) => notify(result ?? success, result ? "error" : "success");
-  const fulfil = (r: Redemption, method: "SHIPPED" | "PICKED_UP") =>
-    run(shop.fulfillRedemption(actorId, r.id, method, serialChoice[r.id]), `${r.rewardName} marked ${method === "SHIPPED" ? "shipped" : "picked up"}.`);
+  const fulfil = (r: Redemption, method: "SHIPPED" | "PICKED_UP") => {
+    const success = `${r.rewardName} marked ${method === "SHIPPED" ? "shipped" : "picked up"}.`;
+    if (live && token) return void runApi(() => apiFulfillRedemption(token, apiRow(r).apiId, method), success);
+    run(shop.fulfillRedemption(actorId, r.id, method, serialChoice[r.id]), success);
+  };
+  const extend = (r: Redemption) => {
+    if (live && token) return void runApi(() => apiExtendRedemption(token, apiRow(r).apiId, 24), "Reservation extended by 24 hours.");
+    run(shop.extendReservation(actorId, r.id, 24), "Reservation extended by 24 hours.");
+  };
   const cancel = async (r: Redemption) => {
-    const reason = await prompt(`Cancel ${r.rewardName} for ${customer(r.userId)}? The reserved stock is released and ${r.points} points are refunded. Enter a reason:`);
+    const reason = await prompt(`Cancel ${r.rewardName} for ${customer(r.userId, r)}? The reserved stock is released and ${r.points} points are refunded. Enter a reason:`);
     if (reason === null) return;
+    if (live && token) {
+      if (!reason.trim()) return notify("Enter a reason for cancelling.", "error");
+      return void runApi(() => apiCancelRedemption(token, apiRow(r).apiId, reason.trim()), "Redemption cancelled and points refunded.");
+    }
     run(shop.cancelRedemption(actorId, r.id, reason), "Redemption cancelled and points refunded.");
   };
 
@@ -71,7 +114,7 @@ export function AdminFulfillmentPage({ actorId }: { actorId: string }) {
             </button>
           ))}
         </div>
-        {(tab === "reserved" || tab === "history") && (
+        {!live && (tab === "reserved" || tab === "history") && (
           <select aria-label="Location" value={locationId} onChange={(e) => setLocationId(e.target.value)} className={filterControl}>
             <option value="all">All locations</option>
             {shop.stockLocations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
@@ -85,23 +128,23 @@ export function AdminFulfillmentPage({ actorId }: { actorId: string }) {
           <table className={`${tableClass} min-w-[900px]`}>
             <thead className={theadClass}><tr><th className="p-3">Customer</th><th className="p-3">Reward</th><th className="p-3">Pick from</th><th className="p-3">Reserved</th><th className="p-3">Hold</th><th className="p-3 text-right">Actions</th></tr></thead>
             <tbody>
-              {pagedTables.reserved.rows.map((r) => {
+              {rowsFor("reserved").map((r) => {
                 const item = shop.stockItemFor(r.rewardId);
                 const level = shop.stockLevels.find((l) => l.key === levelKey(r.rewardId, r.variantId, r.locationId ?? ""));
                 const left = new Date(r.reservedUntil ?? 0).getTime() - Date.now();
                 return (
                   <tr key={r.id} className={rowClass}>
-                    <td className="p-3">{customer(r.userId)}<div className="text-xs text-[var(--muted-foreground)]">{r.points} pts</div></td>
-                    <td className="p-3">{r.rewardName}<div className="font-mono-data text-xs text-[var(--muted-foreground)]">{item.sku}</div></td>
+                    <td className="p-3">{customer(r.userId, r)}<div className="text-xs text-[var(--muted-foreground)]">{r.points} pts</div></td>
+                    <td className="p-3">{r.rewardName}{!live && <div className="font-mono-data text-xs text-[var(--muted-foreground)]">{item.sku}</div>}</td>
                     <td className="p-3 text-xs">
-                      {locName(r.locationId)}
-                      {item.tracking === "serial" && (
+                      {live ? "Main stock" : locName(r.locationId)}
+                      {!live && item.tracking === "serial" && (
                         <select aria-label="Serial to issue" className={`${filterControl} mt-1 block py-1 text-xs`} value={serialChoice[r.id] ?? ""} onChange={(e) => setSerialChoice((m) => ({ ...m, [r.id]: e.target.value }))}>
                           <option value="">Auto serial</option>
                           {(level?.serials ?? []).map((serial) => <option key={serial}>{serial}</option>)}
                         </select>
                       )}
-                      {item.tracking === "batch" && <div className="text-[var(--muted-foreground)]">FEFO from {level?.batches.find((b) => !b.expiresAt || b.expiresAt >= new Date().toISOString().slice(0, 10))?.batch ?? "—"}</div>}
+                      {!live && item.tracking === "batch" && <div className="text-[var(--muted-foreground)]">FEFO from {level?.batches.find((b) => !b.expiresAt || b.expiresAt >= new Date().toISOString().slice(0, 10))?.batch ?? "—"}</div>}
                     </td>
                     <td className="whitespace-nowrap p-3 text-xs text-[var(--muted-foreground)]">{formatDateTime(r.reservedAt)}</td>
                     <td className={`whitespace-nowrap p-3 font-mono-data text-xs ${left < 24 * 3600000 ? "text-orange-400" : ""}`}>{timeLeft(r.reservedUntil)}</td>
@@ -109,14 +152,14 @@ export function AdminFulfillmentPage({ actorId }: { actorId: string }) {
                       <div className="flex flex-wrap justify-end gap-3">
                         <button type="button" disabled={!can("clerk")} onClick={() => fulfil(r, "SHIPPED")} className={`${linkButton} text-[var(--gold-mid)]`}>Ship</button>
                         <button type="button" disabled={!can("clerk")} onClick={() => fulfil(r, "PICKED_UP")} className={`${linkButton} text-[var(--gold-mid)]`}>Picked up</button>
-                        <button type="button" disabled={!can("clerk")} onClick={() => run(shop.extendReservation(actorId, r.id, 24), "Reservation extended by 24 hours.")} className={linkButton}>+24h</button>
+                        <button type="button" disabled={!can("clerk")} onClick={() => extend(r)} className={linkButton}>+24h</button>
                         <button type="button" disabled={!can("manager")} title={can("manager") ? undefined : "Needs stock manager authority"} onClick={() => void cancel(r)} className={`${linkButton} text-red-400`}>Cancel</button>
                       </div>
                     </td>
                   </tr>
                 );
               })}
-              {!reserved.length && <EmptyRow colSpan={6}>Nothing waiting to be fulfilled.</EmptyRow>}
+              {emptyFor("reserved") && <EmptyRow colSpan={6}>Nothing waiting to be fulfilled.</EmptyRow>}
             </tbody>
           </table>
         )}
@@ -165,31 +208,32 @@ export function AdminFulfillmentPage({ actorId }: { actorId: string }) {
           <table className={`${tableClass} min-w-[900px]`}>
             <thead className={theadClass}><tr><th className="p-3">Customer</th><th className="p-3">Reward</th><th className="p-3">Status</th><th className="p-3">Detail</th><th className="p-3">When</th><th className="p-3 text-right" /></tr></thead>
             <tbody>
-              {pagedTables.history.rows.map((r) => (
+              {rowsFor("history").map((r) => (
                 <tr key={r.id} className={rowClass}>
-                  <td className="p-3">{customer(r.userId)}</td>
+                  <td className="p-3">{customer(r.userId, r)}</td>
                   <td className="p-3">{r.rewardName}<div className="text-xs text-[var(--muted-foreground)]">{r.points} pts{r.legacy ? " · before stock ledger" : ""}</div></td>
                   <td className="p-3"><span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${statusTones[r.status]}`}>{r.status.toLowerCase()}</span></td>
                   <td className="p-3 text-xs">
                     {r.status === "FULFILLED" || r.status === "RETURNED"
-                      ? <>{r.fulfillment === "PICKED_UP" ? "Picked up" : r.fulfillment === "SHIPPED" ? "Shipped" : "Issued"} · {locName(r.locationId)}{(r.serial || r.batch) && <span className="font-mono-data"> · {r.serial ?? r.batch}</span>}</>
+                      ? <>{r.fulfillment === "PICKED_UP" ? "Picked up" : r.fulfillment === "SHIPPED" ? "Shipped" : "Issued"}{!live && <> · {locName(r.locationId)}</>}{(r.serial || r.batch) && <span className="font-mono-data"> · {r.serial ?? r.batch}</span>}</>
                       : null}
                     {r.closeReason && <div className="text-[var(--muted-foreground)]">{r.closeReason}</div>}
                   </td>
                   <td className="whitespace-nowrap p-3 text-xs text-[var(--muted-foreground)]">{r.closedAt ? formatDateTime(r.closedAt) : r.fulfilledAt ? formatDateTime(r.fulfilledAt) : r.createdAt}</td>
                   <td className="p-3 text-right">
-                    {r.status === "FULFILLED" && can("clerk") && (
+                    {!live && r.status === "FULFILLED" && can("clerk") && (
                       <button type="button" onClick={() => setDialog({ mode: "return", preset: { redemptionId: r.id } })} className={`${linkButton} text-[var(--gold-mid)]`}>Return</button>
                     )}
                   </td>
                 </tr>
               ))}
-              {!history.length && <EmptyRow colSpan={6}>No completed redemptions yet.</EmptyRow>}
+              {emptyFor("history") && <EmptyRow colSpan={6}>No completed redemptions yet.</EmptyRow>}
             </tbody>
           </table>
         )}
         </div>
-        <TablePagination {...pagedTables[tab].pagination} />
+        {live && apiTable.error && <p role="alert" className="p-3 text-sm text-red-400">{apiTable.error}</p>}
+        <TablePagination {...(live ? apiTable.pagination : pagedTables[tab].pagination)} />
       </div>
       {dialog && <StockMovementDialog actorId={actorId} mode={dialog.mode} preset={dialog.preset} onClose={() => setDialog(null)} closing={dialogClosing} />}
     </div>

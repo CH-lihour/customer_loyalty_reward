@@ -1,4 +1,6 @@
+import { useEffect, useState } from "react";
 import { useShop } from "./shop";
+import { apiDashboard, type DashboardStats } from "./api";
 import { tierOrder } from "./tiers";
 
 export function useAnalytics() {
@@ -33,4 +35,29 @@ export function useAnalytics() {
     inactive60: customers.filter((c) => daysSince(c.lastOrder) >= 60).length,
     inactive90: customers.filter((c) => daysSince(c.lastOrder) >= 90).length,
   };
+}
+
+/**
+ * The dashboard numbers from the API when signed in as staff, else worked out from the demo store. `stats` is null
+ * while the API numbers load; `error` says why they could not.
+ */
+export function useDashboardStats(token: string | null, page: "dashboard" | "analytics") {
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    if (!token) return;
+    let cancelled = false;
+    apiDashboard(token, page).then(
+      (loaded) => {
+        if (cancelled) return;
+        setStats(loaded);
+        setError("");
+      },
+      (e: Error) => !cancelled && setError(e.message),
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [token, page]);
+  return { stats, error, live: Boolean(token) };
 }

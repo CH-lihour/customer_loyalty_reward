@@ -1,6 +1,7 @@
 import type { LoginRole } from "../components/LoginPage";
 import type { Campaign } from "./shop";
-import type { Badge, LoyaltyTransaction, Order, OrderStatus, Product, ProductCategory, Reward } from "./mockData";
+import type { Badge, Customer, LoyaltyTransaction, Order, OrderStatus, Product, ProductCategory, Reward } from "./mockData";
+import type { Redemption, RedemptionStatus } from "./stock";
 
 /** Laravel API root. Set `VITE_API_URL` to point at another server. */
 const apiUrl = (
@@ -1002,4 +1003,231 @@ export async function apiAdminOrderPage(
 export async function apiSetOrderStatus(token: string, apiId: string, status: OrderStatus): Promise<ApiStoreOrder> {
   const { data } = await request<{ data: ApiOrder }>(`/backend/orders/${apiId}/status`, { method: "PATCH", token, body: { status } });
   return toOrder(data);
+}
+
+/** The customer's balance after a redemption changed it. */
+export type RedemptionBalance = { points_balance: number; qualifying_points: number; tier: string | null };
+
+type ApiRedemption = {
+  id: number;
+  customer_id: number;
+  reward_id: number;
+  points: number;
+  status: "RESERVED" | "FULFILLED" | "CANCELLED" | "EXPIRED";
+  fulfillment: "PENDING" | "SHIPPED" | "PICKED_UP";
+  reserved_until: string | null;
+  fulfilled_at: string | null;
+  closed_at: string | null;
+  close_reason: string | null;
+  created_at: string;
+  reward: { id: number; name: string } | null;
+  customer?: { id: number; name: string; email: string } | null;
+};
+
+/** A redemption from the API, with the customer's name for the staff tables. */
+export type ApiRedemptionRow = Redemption & { apiId: string; customerName: string; customerEmail: string };
+
+const toRedemption = (r: ApiRedemption): ApiRedemptionRow => ({
+  id: `api-${r.id}`,
+  apiId: String(r.id),
+  userId: String(r.customer_id),
+  customerName: r.customer?.name ?? "",
+  customerEmail: r.customer?.email ?? "",
+  rewardId: String(r.reward_id),
+  rewardName: r.reward?.name ?? "Reward",
+  points: r.points,
+  createdAt: r.created_at.slice(0, 10),
+  status: r.status as RedemptionStatus,
+  variantId: "",
+  reservedAt: r.created_at,
+  ...(r.reserved_until && { reservedUntil: r.reserved_until }),
+  ...(r.fulfilled_at && { fulfilledAt: r.fulfilled_at }),
+  ...(r.fulfillment !== "PENDING" && { fulfillment: r.fulfillment }),
+  ...(r.closed_at && { closedAt: r.closed_at }),
+  ...(r.close_reason && { closeReason: r.close_reason }),
+});
+
+/** The rewards customers can redeem now, for shoppers and guests. */
+export async function apiStorefrontRewards(): Promise<Reward[]> {
+  return (await fetchAll<ApiReward>("/catalog/rewards", "")).map(toReward);
+}
+
+/** The signed-in customer's own redemptions, newest first. */
+export async function apiMyRedemptions(token: string): Promise<ApiRedemptionRow[]> {
+  return (await fetchAll<ApiRedemption>("/redemptions", token)).map(toRedemption);
+}
+
+/** Spends the customer's points on a reward. */
+export async function apiRedeem(token: string, rewardId: string) {
+  const { data, message } = await request<{ data: ApiRedemption & { customer: RedemptionBalance }; message: string }>("/redemptions", {
+    method: "POST",
+    token,
+    body: { reward_id: Number(rewardId) },
+  });
+  return { redemption: toRedemption({ ...data, customer: null }), balance: data.customer, message };
+}
+
+/** Cancels one of the customer's own held redemptions and refunds its points. */
+export async function apiCancelMyRedemption(token: string, apiId: string) {
+  const { data, message } = await request<{ data: ApiRedemption & { customer: RedemptionBalance }; message: string }>(`/redemptions/${apiId}/cancel`, { method: "POST", token });
+  return { redemption: toRedemption({ ...data, customer: null }), balance: data.customer, message };
+}
+
+export type RedemptionStats = Record<ApiRedemption["status"], number>;
+
+/** One page of redemptions for the fulfilment page, with counts per status. */
+export async function apiRedemptionPage(
+  token: string,
+  query: PageQuery & { search?: string; status?: string },
+): Promise<ApiPage<ApiRedemptionRow> & { stats: RedemptionStats }> {
+  const { data, meta, stats } = (await fetchPage<ApiRedemption>("/backend/redemptions", token, query)) as {
+    data: ApiRedemption[];
+    meta: PageMeta;
+    stats: RedemptionStats;
+  };
+  return { rows: data.map(toRedemption), meta, stats };
+}
+
+/** Marks a held redemption shipped or picked up. */
+export async function apiFulfillRedemption(token: string, apiId: string, method: "SHIPPED" | "PICKED_UP") {
+  await request(`/backend/redemptions/${apiId}/fulfill`, { method: "PATCH", token, body: { method } });
+}
+
+/** Cancels a held redemption, returning its stock and refunding the points. */
+export async function apiCancelRedemption(token: string, apiId: string, reason: string) {
+  await request(`/backend/redemptions/${apiId}/cancel`, { method: "PATCH", token, body: { reason } });
+}
+
+/** Gives a held redemption more hours before it expires. */
+export async function apiExtendRedemption(token: string, apiId: string, hours: number) {
+  await request(`/backend/redemptions/${apiId}/extend`, { method: "PATCH", token, body: { hours } });
+}
+
+type ApiCustomer = {
+  id: number;
+  name: string;
+  email: string;
+  phone: string | null;
+  province: string | null;
+  avatar: string | null;
+  referral_code: string;
+  points_balance: number;
+  qualifying_points: number;
+  total_spent: string;
+  created_at: string;
+  tier: { id: number; name: string } | null;
+  orders_count: number;
+  last_order_at: string | null;
+};
+
+const avatarFor = (name: string) =>
+  `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=262a36&color=e8a634`;
+
+/** `lastOrder` is empty for a customer who has never ordered. */
+const toCustomer = (c: ApiCustomer): Customer => ({
+  id: String(c.id),
+  name: c.name,
+  nameKh: "",
+  email: c.email,
+  phone: c.phone ?? "",
+  province: c.province ?? "—",
+  avatar: c.avatar || avatarFor(c.name),
+  tier: c.tier?.name ?? "",
+  points: c.points_balance,
+  totalSpent: Number(c.total_spent),
+  joinedAt: c.created_at.slice(0, 10),
+  lastOrder: c.last_order_at ? c.last_order_at.slice(0, 10) : "",
+  referralCode: c.referral_code,
+  badges: [],
+  ordersCount: c.orders_count,
+});
+
+/** One page of registered customers for staff. */
+export async function apiCustomerPage(token: string, query: PageQuery & { search?: string; tier?: string }): Promise<ApiPage<Customer>> {
+  const { data, meta } = await fetchPage<ApiCustomer>("/backend/customers", token, query);
+  return { rows: data.map(toCustomer), meta };
+}
+
+/** Moves a customer to a tier, or with no tier, back to the one their qualifying points reach. */
+export async function apiSetCustomerTier(token: string, customerId: string, tierId: number | null, reason: string) {
+  await request(`/backend/customers/${customerId}/tier`, { method: "PATCH", token, body: { tier_id: tierId, reason } });
+}
+
+type ApiDashboard = {
+  total_customers: number;
+  active_customers: number;
+  total_orders: number;
+  completed_orders: number;
+  total_points_issued: number;
+  total_points_redeemed: number;
+  total_rewards_redeemed: number;
+  referral_conversions: number;
+  repeat_customers: number;
+  one_time_customers: number;
+  inactive_30: number;
+  inactive_60: number;
+  inactive_90: number;
+  tier_counts: { tier: string; count: number }[];
+  recent_orders: { id: number; order_number: string; status: OrderStatus; total_amount: string; ordered_at: string; customer: { name: string } | null }[];
+  recent_activity: { id: number; event: string; description: string | null; created_at: string }[];
+  top_customers: ApiCustomer[];
+  engagement: { id: number; name: string; last_order_at: string | null }[];
+};
+
+/** The dashboard and analytics numbers, in the shapes the pages already use. */
+export type DashboardStats = {
+  totalCustomers: number;
+  activeCustomers: number;
+  totalOrders: number;
+  completedOrders: number;
+  totalPointsIssued: number;
+  totalPointsRedeemed: number;
+  tierCounts: { tier: string; count: number }[];
+  totalRewardsRedeemed: number;
+  referralConversions: number;
+  repeatCustomers: number;
+  oneTimeCustomers: number;
+  inactive30: number;
+  inactive60: number;
+  inactive90: number;
+  recentOrders: { id: string; customerName: string; createdAt: string; total: number; status: OrderStatus }[];
+  recentActivity: { id: string; timestamp: string; description: string }[];
+  topCustomers: Customer[];
+  /** Customers with the date of their last order, empty when they never ordered. */
+  engagement: { id: string; name: string; lastOrder: string }[];
+};
+
+/** Loads the dashboard numbers. `page` is the admin page asking, which decides the permission checked. */
+export async function apiDashboard(token: string, page: "dashboard" | "analytics"): Promise<DashboardStats> {
+  const { data: d } = await request<{ data: ApiDashboard }>(`/backend/${page}`, { token });
+  return {
+    totalCustomers: d.total_customers,
+    activeCustomers: d.active_customers,
+    totalOrders: d.total_orders,
+    completedOrders: d.completed_orders,
+    totalPointsIssued: d.total_points_issued,
+    totalPointsRedeemed: d.total_points_redeemed,
+    tierCounts: d.tier_counts,
+    totalRewardsRedeemed: d.total_rewards_redeemed,
+    referralConversions: d.referral_conversions,
+    repeatCustomers: d.repeat_customers,
+    oneTimeCustomers: d.one_time_customers,
+    inactive30: d.inactive_30,
+    inactive60: d.inactive_60,
+    inactive90: d.inactive_90,
+    recentOrders: d.recent_orders.map((o) => ({
+      id: o.order_number,
+      customerName: o.customer?.name ?? "",
+      createdAt: o.ordered_at.slice(0, 10),
+      total: Number(o.total_amount),
+      status: o.status,
+    })),
+    recentActivity: d.recent_activity.map((a) => ({
+      id: String(a.id),
+      timestamp: a.created_at.replace("T", " ").slice(0, 16),
+      description: a.description ?? a.event,
+    })),
+    topCustomers: d.top_customers.map(toCustomer),
+    engagement: d.engagement.map((c) => ({ id: String(c.id), name: c.name, lastOrder: c.last_order_at ? c.last_order_at.slice(0, 10) : "" })),
+  };
 }

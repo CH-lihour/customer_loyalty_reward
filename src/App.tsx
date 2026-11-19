@@ -571,8 +571,8 @@ export default function App() {
         userName={adminUser.name}
         userRoleLabel={shop.roleLabels[adminUser.role] ?? adminUser.role}
       >
-        {adminPage === "dashboard" && <AdminDashboardPage />}
-        {adminPage === "customers" && <AdminCustomersPage />}
+        {adminPage === "dashboard" && <AdminDashboardPage token={session.token} />}
+        {adminPage === "customers" && <AdminCustomersPage token={session.token} />}
         {adminPage === "products" && (
           <AdminProductsPage actorId={adminUser.id} token={session.token} />
         )}
@@ -608,7 +608,7 @@ export default function App() {
           <AdminStockMovementsPage actorId={adminUser.id} />
         )}
         {adminPage === "fulfillment" && (
-          <AdminFulfillmentPage actorId={adminUser.id} />
+          <AdminFulfillmentPage actorId={adminUser.id} token={session.token} />
         )}
         {adminPage === "stocktake" && (
           <AdminStocktakePage actorId={adminUser.id} />
@@ -618,7 +618,7 @@ export default function App() {
           <AdminSuppliersPage actorId={adminUser.id} />
         )}
         {adminPage === "logs" && <AdminActivityLogsPage />}
-        {adminPage === "analytics" && <AdminAnalyticsPage />}
+        {adminPage === "analytics" && <AdminAnalyticsPage token={session.token} />}
         {adminPage === "users" && <AdminUsersPage actorId={adminUser.id} token={session.token} />}
         {adminPage === "roles" && <AdminRolesPage actorId={adminUser.id} token={session.token} />}
         {adminPage === "exchange-rate" && (
@@ -678,7 +678,9 @@ export default function App() {
       {customerPage === "orders" && (
         <OrdersPage token={session?.role === "customer" ? session.token : null} />
       )}
-      {customerPage === "rewards" && <RewardsPage />}
+      {customerPage === "rewards" && (
+        <RewardsPage token={session?.role === "customer" ? session.token : null} />
+      )}
       {customerPage === "points" && <PointsPage />}
       {customerPage === "tier" && <TierPage />}
       {customerPage === "badges" && <BadgesPage />}
