@@ -1,9 +1,12 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useShop } from "../../data/shop"
 import { useFeedback } from "../../components/FeedbackProvider"
 import type { OrderStatus } from "../../data/mockData"
 import { AdminModal } from "../../components/AdminModal"
 import { useModalState } from "../../components/useModalState"
+import { apiAdminOrderPage, apiSetOrderStatus, type ApiStoreOrder, type OrderStats } from "../../data/api"
+import { useApiTable } from "../../data/apiTable"
+import { TablePagination } from "../../components/TablePagination"
 
 const statuses: OrderStatus[] = [
   "PENDING",
@@ -30,31 +33,66 @@ const nextStatuses: Record<OrderStatus, OrderStatus[]> = {
   CANCELLED: [],
 }
 
-export function AdminOrdersPage() {
-  const { orders, updateOrderStatus } = useShop()
+/** Customers' orders from the API. Points are awarded when an order is paid; cancelling takes them back. */
+export function AdminOrdersPage({ actorId, token }: { actorId: string; token: string }) {
+  const { logStaffAction } = useShop()
   const { notify } = useFeedback()
   const [filter, setFilter] = useState<"All" | OrderStatus>("All")
-  const [editingId, setEditingId, modalClosing] = useModalState<string | null>(null)
+  const [search, setSearch] = useState("")
+  const [term, setTerm] = useState("")
+  const [stats, setStats] = useState<OrderStats | null>(null)
+  const table = useApiTable(
+    (page, perPage) =>
+      apiAdminOrderPage(token, { page, perPage, search: term, status: filter === "All" ? "" : filter }).then((result) => {
+        setStats(result.stats)
+        return result
+      }),
+    [term, filter].join("|"),
+  )
+  // Search once typing pauses, not on every keystroke.
+  useEffect(() => {
+    const timer = setTimeout(() => setTerm(search.trim()), 300)
+    return () => clearTimeout(timer)
+  }, [search])
+  const [editing, setEditing, modalClosing] = useModalState<ApiStoreOrder | null>(null)
   const [nextStatus, setNextStatus] = useState<OrderStatus>("PENDING")
-  const editingOrder = orders.find((order) => order.id === editingId)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState("")
 
-  const openStatusEditor = (id: string, status: OrderStatus) => {
-    setEditingId(id)
-    setNextStatus(nextStatuses[status][0] ?? status)
+  const openStatusEditor = (order: ApiStoreOrder) => {
+    setError("")
+    setEditing(order)
+    setNextStatus(nextStatuses[order.status][0] ?? order.status)
   }
 
-  const filtered = orders.filter((o) => filter === "All" || o.status === filter)
-
-  const updateStatus = (id: string, status: OrderStatus) => {
-    updateOrderStatus(id, status)
-    notify(`Order ${id} changed to ${status}.`, "success")
+  const updateStatus = async (order: ApiStoreOrder, status: OrderStatus) => {
+    if (saving) return
+    setSaving(true)
+    setError("")
+    try {
+      await apiSetOrderStatus(token, order.apiId, status)
+      logStaffAction(actorId, `ORDER_${status}`, `Order ${order.id} changed to ${status}`)
+      notify(
+        status === "CANCELLED" && order.pointsEarned > 0
+          ? `Order ${order.id} cancelled. ${order.pointsEarned} points taken back.`
+          : `Order ${order.id} changed to ${status}.`,
+        "success",
+      )
+      setEditing(null)
+      table.reload()
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setSaving(false)
+    }
   }
+  const total = stats ? Object.values(stats).reduce((sum, n) => sum + n, 0) : null
 
   return (
     <div className="flex flex-col gap-5">
       <h1 className="font-display text-2xl font-semibold">Orders</h1>
 
-      <div className="flex gap-2 flex-wrap">
+      <div className="flex gap-2 flex-wrap items-center">
         {(["All", ...statuses] as const).map((s) => (
           <button
             key={s}
@@ -66,12 +104,31 @@ export function AdminOrdersPage() {
             }`}
           >
             {s}
+            {stats && ` (${s === "All" ? total : stats[s]})`}
           </button>
         ))}
+        <input
+          type="search"
+          aria-label="Search orders"
+          placeholder="Order number, name or email…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="ml-auto w-60 px-3 py-1.5 rounded-lg bg-[var(--card)] border border-[var(--border)] text-sm text-[var(--foreground)] placeholder:text-[var(--muted-foreground)] focus:outline-none focus:border-[var(--gold-mid)]/50"
+        />
       </div>
 
+      {table.error && (
+        <p role="alert" className="text-sm text-red-400">
+          {table.error}
+        </p>
+      )}
       <div className="flex flex-col gap-3">
-        {filtered.map((o) => (
+        {!table.rows.length && (
+          <p className="text-sm text-[var(--muted-foreground)]">
+            {table.loading ? "Loading orders…" : term || filter !== "All" ? "No orders match." : "No orders yet."}
+          </p>
+        )}
+        {table.rows.map((o) => (
           <div
             key={o.id}
             className="bg-[var(--card)] rounded-xl p-4 border border-[var(--border)]"
@@ -83,6 +140,7 @@ export function AdminOrdersPage() {
                 </span>
                 <span className="ml-3 text-sm text-[var(--muted-foreground)]">
                   {o.customerName}
+                  {o.customerEmail && ` · ${o.customerEmail}`}
                 </span>
                 <span className="ml-3 text-xs text-[var(--muted-foreground)]">
                   {o.createdAt}
@@ -96,7 +154,7 @@ export function AdminOrdersPage() {
                 </span>
                 {nextStatuses[o.status].length > 0 && (
                   <button
-                    onClick={() => openStatusEditor(o.id, o.status)}
+                    onClick={() => openStatusEditor(o)}
                     className="rounded-lg border border-[var(--border)] bg-[var(--secondary)] px-2 py-1 text-xs text-[var(--gold-mid)]"
                   >
                     Change status
@@ -135,7 +193,9 @@ export function AdminOrdersPage() {
               <div className="flex items-center gap-3">
                 {o.pointsEarned > 0 && (
                   <span className="text-xs text-[var(--gold-mid)]">
-                    +{o.pointsEarned} pts awarded
+                    {o.status === "CANCELLED"
+                      ? `${o.pointsEarned} pts taken back`
+                      : `+${o.pointsEarned} pts awarded`}
                   </span>
                 )}
                 <span className="font-semibold">${o.total}</span>
@@ -144,23 +204,28 @@ export function AdminOrdersPage() {
           </div>
         ))}
       </div>
-      {editingOrder && (
+      <TablePagination {...table.pagination} />
+      {editing && (
         <AdminModal
           closing={modalClosing}
-          title={`Change status for ${editingOrder.id}`}
-          onClose={() => setEditingId(null)}
+          title={`Change status for ${editing.id}`}
+          onClose={() => setEditing(null)}
         >
           <form
             className="space-y-4"
             onSubmit={(event) => {
               event.preventDefault()
-              updateStatus(editingOrder.id, nextStatus)
-              setEditingId(null)
+              updateStatus(editing, nextStatus)
             }}
           >
             <p className="text-sm text-[var(--muted-foreground)]">
-              Current status: {editingOrder.status}
+              Current status: {editing.status}
             </p>
+            {nextStatus === "CANCELLED" && editing.pointsEarned > 0 && (
+              <p className="text-sm text-yellow-400">
+                Cancelling takes back the {editing.pointsEarned} points this order earned.
+              </p>
+            )}
             <label className="block text-sm">
               New status
               <select
@@ -170,21 +235,27 @@ export function AdminOrdersPage() {
                 }
                 className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--secondary)] px-3 py-2"
               >
-                {nextStatuses[editingOrder.status].map((status) => (
+                {nextStatuses[editing.status].map((status) => (
                   <option key={status}>{status}</option>
                 ))}
               </select>
             </label>
+            {error && (
+              <p role="alert" className="text-sm text-red-400">
+                {error}
+              </p>
+            )}
             <div className="flex gap-2">
               <button
                 type="submit"
-                className="rounded-lg bg-[var(--gold-mid)] px-4 py-2 font-semibold text-[var(--background)]"
+                disabled={saving}
+                className="rounded-lg bg-[var(--gold-mid)] px-4 py-2 font-semibold text-[var(--background)] disabled:opacity-60"
               >
-                Save Status
+                {saving ? "Saving…" : "Save Status"}
               </button>
               <button
                 type="button"
-                onClick={() => setEditingId(null)}
+                onClick={() => setEditing(null)}
                 className="rounded-lg bg-[var(--secondary)] px-4 py-2"
               >
                 Cancel

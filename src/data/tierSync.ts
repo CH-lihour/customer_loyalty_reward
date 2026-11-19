@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { apiTiers, type AdminTier } from "./api";
+import { apiStorefrontTiers, apiTiers, type AdminTier } from "./api";
 import { useShop } from "./shop";
 import type { TierTable } from "./tiers";
 
@@ -54,4 +54,36 @@ export function useApiTiers(token: string | null) {
   }, [reload, token]);
 
   return { tiers, loading, loadError, reload };
+}
+
+/**
+ * Loads the public tier list into the store for shoppers and guests, so tier names and multipliers match
+ * the API's. Off while `enabled` is false. A failure, or an API with no tiers, keeps the demo tiers.
+ */
+export function useStorefrontTiers(enabled: boolean) {
+  const { syncTiers } = useShop();
+  const sync = useRef(syncTiers);
+  sync.current = syncTiers;
+
+  useEffect(() => {
+    if (!enabled) return;
+    let cancelled = false;
+    apiStorefrontTiers().then(
+      (loaded) => {
+        if (cancelled || !loaded.length) return;
+        sync.current(
+          Object.fromEntries(
+            loaded.map((t): [string, TierTable[string]] => [
+              t.name,
+              { min: t.min, max: t.max, multiplier: t.multiplier, color: t.color },
+            ]),
+          ),
+        );
+      },
+      () => {},
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [enabled]);
 }

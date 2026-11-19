@@ -1,6 +1,6 @@
 import type { LoginRole } from "../components/LoginPage";
 import type { Campaign } from "./shop";
-import type { Badge, LoyaltyTransaction, Product, ProductCategory, Reward } from "./mockData";
+import type { Badge, LoyaltyTransaction, Order, OrderStatus, Product, ProductCategory, Reward } from "./mockData";
 
 /** Laravel API root. Set `VITE_API_URL` to point at another server. */
 const apiUrl = (
@@ -21,6 +21,10 @@ export type ApiProfile = {
   phone?: string | null;
   points_balance?: number;
   qualifying_points?: number;
+  /** Customer only: the tier's name, lifetime spend in USD (a decimal string) and orders not cancelled. */
+  tier?: string | null;
+  total_spent?: string;
+  orders_count?: number;
   /** Customer only. `referral_code` is also sent by the profile; the others only on registration. */
   name_kh?: string | null;
   province?: string | null;
@@ -239,6 +243,18 @@ export async function apiCatalog(token: string) {
   };
 }
 
+/** Loads the public storefront catalog: active categories and their products, for shoppers and guests. */
+export async function apiStorefrontCatalog() {
+  const [categories, products] = await Promise.all([
+    fetchAll<ApiCategory>("/catalog/categories", ""),
+    fetchAll<ApiProduct>("/catalog/products", ""),
+  ]);
+  return {
+    categories: categories.map(toCategory),
+    products: products.map(toProduct),
+  };
+}
+
 /** One page of categories for the admin table, with each category's product count. */
 export async function apiCategoryPage(token: string, query: PageQuery & { search?: string }): Promise<ApiPage<ProductCategory & { productCount: number }>> {
   const { data, meta } = await fetchPage<ApiCategory & { products_count: number }>("/backend/categories", token, query);
@@ -374,6 +390,11 @@ const toTier = (t: ApiTier): AdminTier => ({
   color: t.color ?? "#94a3b8",
   customerCount: t.customers_count,
 });
+
+/** Loads the public tier list (no customer counts), for shoppers and guests. */
+export async function apiStorefrontTiers(): Promise<AdminTier[]> {
+  return (await fetchAll<Omit<ApiTier, "customers_count">>("/catalog/tiers", "")).map((t) => toTier({ ...t, customers_count: 0 }));
+}
 
 /** Loads every tier from the entry tier upwards. */
 export async function apiTiers(token: string): Promise<AdminTier[]> {
@@ -850,4 +871,135 @@ export async function apiKhqrStatus(token: string, md5: string): Promise<KhqrPay
 export async function apiSimulateKhqr(token: string, md5: string): Promise<KhqrPayment> {
   const { data } = await request<{ data: ApiKhqrPayment }>(`/payments/khqr/${md5}/simulate`, { method: "POST", token });
   return toKhqrPayment(data);
+}
+
+/** The multipliers the signed-in customer's next order earns with. */
+export type PointRules = { tierMultiplier: number; campaignMultiplier: number };
+
+export async function apiPointRules(token: string): Promise<PointRules> {
+  const { data } = await request<{ data: { tier_multiplier: number; campaign_multiplier: number } }>("/points/rules", { token });
+  return { tierMultiplier: Number(data.tier_multiplier), campaignMultiplier: Number(data.campaign_multiplier) };
+}
+
+/** An order the API saved after its KHQR code was paid, with the points it earned. */
+export type PlacedOrder = {
+  orderNumber: string;
+  total: number;
+  pointsEarned: number;
+  /** The welcome bonus the order paid by converting the customer's referral, or 0. */
+  referralBonus: number;
+  pointsBalance: number;
+};
+
+type ApiPlacedOrder = {
+  order_number: string;
+  total_amount: string;
+  points_earned: number;
+  referral_bonus: number;
+  customer: { points_balance: number };
+};
+
+/** Places the cart as an order paid with the given KHQR code. The API prices it and awards its points. */
+export async function apiCreateOrder(
+  token: string,
+  order: { items: { productId: string; qty: number }[]; address: string; phone: string; khqrMd5: string },
+): Promise<PlacedOrder> {
+  const { data } = await request<{ data: ApiPlacedOrder }>("/orders", {
+    method: "POST",
+    token,
+    body: {
+      items: order.items.map((i) => ({ product_id: Number(i.productId), qty: i.qty })),
+      delivery_address: order.address,
+      delivery_phone: order.phone,
+      khqr_md5: order.khqrMd5,
+    },
+  });
+  return {
+    orderNumber: data.order_number,
+    total: Number(data.total_amount),
+    pointsEarned: data.points_earned,
+    referralBonus: data.referral_bonus,
+    pointsBalance: data.customer.points_balance,
+  };
+}
+
+type ApiOrder = {
+  id: number;
+  order_number: string;
+  status: OrderStatus;
+  total_amount: string;
+  points_earned: number;
+  ordered_at: string;
+  delivery_address: string | null;
+  delivery_phone: string | null;
+  customer_id: number;
+  customer?: { id: number; name: string; email: string } | null;
+  items: { product_id: number; quantity: number; unit_price: string; base_points: number; bonus_multiplier: string; product: { name: string } | null }[];
+  payment: { method: "KHQR"; status: "PAID"; currency: "USD" | "KHR"; paid_amount: string | null; amount: string; transaction_id: string | null; paid_at: string | null } | null;
+};
+
+/** An order saved by the API, in the store's shape. `apiId` is the API's id, used to change its status. */
+export type ApiStoreOrder = Order & { apiId: string; customerEmail: string };
+
+const toOrder = (o: ApiOrder): ApiStoreOrder => ({
+  id: o.order_number,
+  apiId: String(o.id),
+  customerId: String(o.customer_id),
+  customerName: o.customer?.name ?? "",
+  customerEmail: o.customer?.email ?? "",
+  items: o.items.map((i) => ({
+    productId: String(i.product_id),
+    name: i.product?.name ?? "Product",
+    qty: i.quantity,
+    price: Number(i.unit_price),
+    basePoints: i.base_points,
+    bonusMultiplier: Number(i.bonus_multiplier),
+  })),
+  total: Number(o.total_amount),
+  status: o.status,
+  pointsEarned: o.points_earned,
+  createdAt: o.ordered_at.slice(0, 10),
+  deliveryAddress: o.delivery_address ?? undefined,
+  deliveryPhone: o.delivery_phone ?? undefined,
+  pointsFromApi: true,
+  ...(o.payment
+    ? {
+        payment: {
+          method: "KHQR" as const,
+          status: "PAID" as const,
+          amount: o.payment.paid_amount ?? o.payment.amount,
+          currency: o.payment.currency,
+          billNumber: "",
+          transactionId: o.payment.transaction_id ?? "",
+          paidAt: o.payment.paid_at ?? o.ordered_at,
+        },
+      }
+    : {}),
+});
+
+/** The signed-in customer's own orders, newest first. */
+export async function apiMyOrders(token: string): Promise<ApiStoreOrder[]> {
+  return (await fetchAll<ApiOrder>("/orders", token)).map(toOrder);
+}
+
+/** How many orders are in each status, whatever the filters. */
+export type OrderStats = Record<OrderStatus, number>;
+
+/** One page of every customer's orders for staff, newest first, with counts per status. */
+export async function apiAdminOrderPage(
+  token: string,
+  query: PageQuery & { search?: string; status?: string },
+): Promise<ApiPage<ApiStoreOrder> & { stats: OrderStats }> {
+  const { data, meta, stats } = (await fetchPage<ApiOrder>("/backend/orders", token, query)) as {
+    data: ApiOrder[];
+    meta: PageMeta;
+    stats: OrderStats;
+  };
+  return { rows: data.map(toOrder), meta, stats };
+}
+
+/** Moves an order to its next status. Cancelling takes back the points it earned. */
+export async function apiSetOrderStatus(token: string, apiId: string, status: OrderStatus): Promise<ApiStoreOrder> {
+  const { data } = await request<{ data: ApiOrder }>(`/backend/orders/${apiId}/status`, { method: "PATCH", token, body: { status } });
+  return toOrder(data);
 }

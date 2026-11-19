@@ -30,13 +30,18 @@ export function KhqrPayment({
   token: string;
   amount: number;
   currency: "USD" | "KHR";
-  /** Called once when the code is paid. Returns an error message if the order could not be placed. */
-  onPaid: (payment: OrderPayment) => string | null;
+  /**
+   * Called when the code is paid, with the code's MD5 to place the order with. Returns (or resolves to) an
+   * error message if the order could not be placed; the customer can then try placing it again.
+   */
+  onPaid: (payment: OrderPayment, md5: string) => string | null | Promise<string | null>;
   onCancel: () => void;
 }) {
   const [payment, setPayment] = useState<Payment | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  // The code is paid but placing the order failed, so the customer can retry without paying again.
+  const [orderFailed, setOrderFailed] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const handled = useRef(false);
 
@@ -66,16 +71,31 @@ export function KhqrPayment({
       setPayment(next);
       if (next.status !== "PAID" || handled.current) return;
       handled.current = true;
-      const failure = onPaid({
-        method: "KHQR",
-        status: "PAID",
-        amount: next.amount,
-        currency: next.currency,
-        billNumber: next.billNumber,
-        transactionId: next.transactionId ?? "",
-        paidAt: next.paidAt ?? new Date().toISOString(),
-      });
-      if (failure) setError(failure);
+      setBusy(true);
+      setError("");
+      setOrderFailed(false);
+      Promise.resolve(
+        onPaid(
+          {
+            method: "KHQR",
+            status: "PAID",
+            amount: next.amount,
+            currency: next.currency,
+            billNumber: next.billNumber,
+            transactionId: next.transactionId ?? "",
+            paidAt: next.paidAt ?? new Date().toISOString(),
+          },
+          next.md5,
+        ),
+      )
+        .catch((e: Error) => e.message)
+        .then((failure) => {
+          if (!failure) return;
+          handled.current = false;
+          setError(failure);
+          setOrderFailed(true);
+        })
+        .finally(() => setBusy(false));
     },
     [onPaid],
   );
@@ -169,7 +189,9 @@ export function KhqrPayment({
           </>
         )}
         {status === "PAID" && (
-          <div className="font-semibold text-green-400">Payment received</div>
+          <div className="font-semibold text-green-400">
+            {busy ? "Payment received · Placing your order…" : "Payment received"}
+          </div>
         )}
         {status === "EXPIRED" && (
           <div className="text-[var(--muted-foreground)]">
@@ -185,6 +207,17 @@ export function KhqrPayment({
         <p role="alert" className="text-sm text-red-400">
           {error}
         </p>
+      )}
+
+      {status === "PAID" && orderFailed && payment && (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => settle(payment)}
+          className="w-full rounded-lg bg-[var(--gold-mid)] text-[var(--background)] py-2 font-semibold disabled:opacity-50"
+        >
+          Try placing the order again
+        </button>
       )}
 
       {status !== "PAID" && (

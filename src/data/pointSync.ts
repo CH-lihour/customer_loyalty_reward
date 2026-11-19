@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { apiMyPoints, apiProfile } from "./api";
+import { apiMyPoints, apiProfile, type ApiProfile } from "./api";
 import { useShop } from "./shop";
 
 /**
@@ -18,7 +18,8 @@ export function useCustomerPoints(token: string | null, userId: string | null) {
     let cancelled = false;
     Promise.all([apiProfile("customer", token), apiMyPoints(token)]).then(
       ([profile, rows]) => {
-        if (!cancelled) sync.current(userId, profile.points_balance ?? 0, profile.qualifying_points ?? 0, rows, profile.referral_code);
+        if (!cancelled)
+          sync.current(userId, profile.points_balance ?? 0, profile.qualifying_points ?? 0, rows, profile.referral_code, account(profile));
       },
       () => {},
     );
@@ -27,3 +28,20 @@ export function useCustomerPoints(token: string | null, userId: string | null) {
     };
   }, [token, userId]);
 }
+
+/** Loads the customer's balance and ledger once, e.g. right after an order earned points. */
+export async function refreshCustomerPoints(
+  token: string,
+  userId: string,
+  sync: ReturnType<typeof useShop>["syncCustomerPoints"],
+) {
+  const [profile, rows] = await Promise.all([apiProfile("customer", token), apiMyPoints(token)]);
+  sync(userId, profile.points_balance ?? 0, profile.qualifying_points ?? 0, rows, profile.referral_code, account(profile));
+}
+
+/** The account details the profile adds beyond points: tier, lifetime spend and order count. */
+const account = (profile: ApiProfile) => ({
+  tier: profile.tier,
+  totalSpent: profile.total_spent === undefined ? undefined : Number(profile.total_spent),
+  ordersCount: profile.orders_count,
+});

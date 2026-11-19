@@ -1,5 +1,7 @@
+import { useEffect, useState } from "react";
 import { useShop } from "../../data/shop";
-import type { OrderStatus } from "../../data/mockData";
+import type { Order, OrderStatus } from "../../data/mockData";
+import { apiMyOrders } from "../../data/api";
 
 const statusColors: Record<OrderStatus, string> = {
   PENDING: "text-yellow-400 bg-yellow-400/10",
@@ -10,17 +12,40 @@ const statusColors: Record<OrderStatus, string> = {
   CANCELLED: "text-red-400 bg-red-400/10",
 };
 
-export function OrdersPage() {
+export function OrdersPage({ token = null }: { token?: string | null }) {
   const { orders, currentUser, money } = useShop();
-  const myOrders = orders.filter((o) => o.customerId === currentUser.id);
+  // Signed in through the API, the customer's orders come from it; the demo store is the fallback.
+  const [apiOrders, setApiOrders] = useState<Order[] | null>(null);
+  const [loadError, setLoadError] = useState("");
+  useEffect(() => {
+    if (!token) return;
+    let cancelled = false;
+    apiMyOrders(token).then(
+      (loaded) => {
+        if (cancelled) return;
+        setApiOrders(loaded);
+        setLoadError("");
+      },
+      (e: Error) => !cancelled && setLoadError(e.message),
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
+  const myOrders = token ? (apiOrders ?? []) : orders.filter((o) => o.customerId === currentUser.id);
 
   return (
     <div className="flex flex-col gap-5">
       <h1 className="font-display text-2xl font-semibold">My Orders</h1>
 
+      {loadError && (
+        <p role="alert" className="text-sm text-red-400">
+          {loadError}
+        </p>
+      )}
       {myOrders.length === 0 ? (
         <div className="text-center py-16 text-[var(--muted-foreground)]">
-          No orders yet.
+          {token && !apiOrders && !loadError ? "Loading your orders…" : "No orders yet."}
         </div>
       ) : (
         <div className="flex flex-col gap-3">
@@ -49,14 +74,19 @@ export function OrdersPage() {
                       Paid · KHQR
                     </span>
                   )}
-                  {order.pointsEarned > 0 && (
+                  {order.pointsEarned > 0 && !(order.pointsFromApi && order.status === "CANCELLED") && (
                     <span className="text-xs text-[var(--gold-mid)] font-semibold">
                       +{order.pointsEarned} pts earned
                     </span>
                   )}
-                  {order.status === "PROCESSING" && (
+                  {order.status === "PROCESSING" && !order.pointsFromApi && (
                     <span className="text-xs text-[var(--muted-foreground)]">
                       pts pending completion
+                    </span>
+                  )}
+                  {order.status === "CANCELLED" && order.pointsFromApi && order.pointsEarned > 0 && (
+                    <span className="text-xs text-[var(--muted-foreground)]">
+                      points taken back
                     </span>
                   )}
                 </div>

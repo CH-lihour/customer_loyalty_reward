@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useShop } from "../../data/shop";
 import { tierRule } from "../../data/tiers";
 import { useFeedback } from "../../components/FeedbackProvider";
@@ -6,6 +6,8 @@ import { ProductCover } from "../../components/ProductImage";
 import { Icon } from "../../components/Icon";
 import { KhqrPayment } from "../../components/KhqrPayment";
 import type { OrderPayment } from "../../data/mockData";
+import { apiCreateOrder, apiPointRules, type PlacedOrder, type PointRules } from "../../data/api";
+import { refreshCustomerPoints } from "../../data/pointSync";
 
 export function CartPage({
   onNav,
@@ -29,6 +31,18 @@ export function CartPage({
   const [paying, setPaying] = useState(false);
   // The payment of the order just placed, for the receipt shown after the cart empties.
   const [paid, setPaid] = useState<OrderPayment | null>(null);
+  // The API's copy of that order, with the points it earned.
+  const [placed, setPlaced] = useState<PlacedOrder | null>(null);
+  // The API's tier and campaign multipliers, so the preview matches the points checkout awards.
+  const [rules, setRules] = useState<PointRules | null>(null);
+  useEffect(() => {
+    if (!token) return;
+    let cancelled = false;
+    apiPointRules(token).then((next) => !cancelled && setRules(next), () => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
   const items = shop.cart
     .map((item) => ({
       ...item,
@@ -39,14 +53,15 @@ export function CartPage({
     (sum, item) => sum + item.product!.price * item.qty,
     0,
   );
-  const multiplier = guest ? 1 : tierRule(shop.tiers, shop.currentUser.tier).multiplier;
+  const multiplier = guest ? 1 : (rules?.tierMultiplier ?? tierRule(shop.tiers, shop.currentUser.tier).multiplier);
   const today = new Date().toISOString().slice(0, 10);
-  const campaignMultiplier = Math.max(
+  const campaignMultiplier = rules?.campaignMultiplier ?? Math.max(
     1,
     ...shop.campaigns
-      .filter((c) => c.active && c.startDate <= today && c.endDate >= today)
+      .filter((c) => c.active && c.startDate <= today && (!c.endDate || c.endDate >= today))
       .map((c) => c.multiplier),
   );
+  // The small nudge matches the API, which keeps 2.3 × 100 = 229.99999 from rounding down to 229.
   const points = Math.floor(
     items.reduce(
       (sum, item) =>
@@ -55,7 +70,8 @@ export function CartPage({
       0,
     ) *
       multiplier *
-      campaignMultiplier,
+      campaignMultiplier +
+      1e-6,
   );
   const setQty = (id: string, qty: number) =>
     shop.setCart(
@@ -91,8 +107,19 @@ export function CartPage({
             : `$${paid.amount}`}{" "}
           by KHQR · Transaction {paid.transactionId}
           <br />
-          Your order is placed. Points will arrive when it is completed.
+          Order {placed?.orderNumber} is placed.
         </p>
+        {placed && placed.pointsEarned + placed.referralBonus > 0 && (
+          <p className="text-[var(--gold-mid)] font-semibold">
+            +{placed.pointsEarned.toLocaleString()} points earned
+            {placed.referralBonus > 0 &&
+              ` · +${placed.referralBonus} referral welcome bonus`}
+            <br />
+            <span className="text-sm font-normal text-[var(--muted-foreground)]">
+              Balance: {placed.pointsBalance.toLocaleString()} points
+            </span>
+          </p>
+        )}
         <div className="flex justify-center gap-2">
           <button
             onClick={() => onNav("orders")}
@@ -181,7 +208,7 @@ export function CartPage({
           <strong>{shop.money(subtotal)}</strong>
         </div>
         <div className="flex justify-between text-[var(--gold-mid)]">
-          <span>Points after order completion</span>
+          <span>Points you earn when you pay</span>
           <strong>+{points}</strong>
         </div>
         {guest ? (
@@ -207,17 +234,36 @@ export function CartPage({
                 : subtotal
             }
             currency={shop.currency}
-            onPaid={(payment) => {
-              const result = shop.checkout(address, phone, payment);
-              if (result) {
-                notify(result, "error");
-                return result;
+            onPaid={async (payment, md5) => {
+              const problem = shop.checkoutError(address, phone);
+              if (problem) {
+                notify(problem, "error");
+                return problem;
               }
+              // The API prices the order, saves it and awards its points (and any referral bonus).
+              let order: PlacedOrder;
+              try {
+                order = await apiCreateOrder(token, {
+                  items: shop.cart,
+                  address: address.trim(),
+                  phone: phone.trim(),
+                  khqrMd5: md5,
+                });
+              } catch (e) {
+                const message = (e as Error).message;
+                notify(message, "error");
+                return message;
+              }
+              shop.checkout(address, phone, payment, order);
+              setPlaced(order);
               setPaid(payment);
               notify(
-                "Payment received. Your order is placed!",
+                order.pointsEarned > 0
+                  ? `Payment received. You earned ${order.pointsEarned} points!`
+                  : "Payment received. Your order is placed!",
                 "success",
               );
+              refreshCustomerPoints(token, shop.currentUser.id, shop.syncCustomerPoints).catch(() => {});
               return null;
             }}
             onCancel={() => setPaying(false)}

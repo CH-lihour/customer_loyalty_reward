@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { useShop } from "./data/shop";
-import { useApiTiers } from "./data/tierSync";
+import { useApiTiers, useStorefrontTiers } from "./data/tierSync";
 import { useApiBadges } from "./data/badgeSync";
 import { useApiRewards } from "./data/rewardSync";
 import { useApiCampaigns } from "./data/campaignSync";
 import { useCustomerPoints } from "./data/pointSync";
+import { useStorefrontCatalog } from "./data/catalog";
 import { useFeedback } from "./components/FeedbackProvider";
 import { LoginPage, type AuthResult, type LoginRole, type ResendResult } from "./components/LoginPage";
 import { CustomerLayout } from "./components/CustomerLayout";
@@ -206,6 +207,10 @@ export default function App() {
       ? session.token
       : null,
   );
+  // Shoppers and guests browse the API's catalog, so a paid order can name real products and earn their points.
+  useStorefrontCatalog(session?.role !== "admin");
+  // And the API's tiers, so a customer's tier name and multiplier match what the API awards with.
+  useStorefrontTiers(session?.role !== "admin");
   // A signed-in customer's balance and history come from the API's ledger.
   useCustomerPoints(
     session?.role === "customer" ? session.token : null,
@@ -574,7 +579,9 @@ export default function App() {
         {adminPage === "categories" && (
           <AdminCategoriesPage actorId={adminUser.id} token={session.token} />
         )}
-        {adminPage === "orders" && <AdminOrdersPage />}
+        {adminPage === "orders" && (
+          <AdminOrdersPage actorId={adminUser.id} token={session.token} />
+        )}
         {adminPage === "points" && (
           <AdminPointsPage actorId={adminUser.id} token={session.token} />
         )}
@@ -668,7 +675,9 @@ export default function App() {
           }}
         />
       )}
-      {customerPage === "orders" && <OrdersPage />}
+      {customerPage === "orders" && (
+        <OrdersPage token={session?.role === "customer" ? session.token : null} />
+      )}
       {customerPage === "rewards" && <RewardsPage />}
       {customerPage === "points" && <PointsPage />}
       {customerPage === "tier" && <TierPage />}

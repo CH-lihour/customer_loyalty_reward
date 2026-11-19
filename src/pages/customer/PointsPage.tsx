@@ -140,7 +140,7 @@ export function PointsPage() {
             {
               icon: "users",
               label: "Refer a friend",
-              note: "+100 pts when they complete first order",
+              note: "+100 pts when they pay for their first order",
             },
             {
               icon: "calendar",

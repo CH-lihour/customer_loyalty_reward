@@ -67,6 +67,8 @@ export interface Order {
   deliveryPhone?: string;
   /** How the order was paid. Orders placed before checkout took payment have none. */
   payment?: OrderPayment;
+  /** The API saved this order and awarded its points when it was paid, so completing it adds none here. */
+  pointsFromApi?: boolean;
 }
 
 /** A demo KHQR payment: the code was "paid" with the Simulate payment button, so no money moved. */

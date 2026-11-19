@@ -70,7 +70,7 @@ export function ReferralsPage({ token }: { token: string | null }) {
           Invite Friends, Earn Together
         </h2>
         <p className="text-sm text-[var(--muted-foreground)]">
-          Share your code. After a referred customer completes their first
+          Share your code. When a referred customer pays for their first
           order, you earn {referrerPoints} points and they earn {referredPoints} points.
         </p>
         <div className="mt-4 flex items-center gap-2">
@@ -123,7 +123,7 @@ export function ReferralsPage({ token }: { token: string | null }) {
               <span
                 className={r.completed ? "text-green-400" : "text-yellow-400"}
               >
-                {r.completed ? "Converted" : "Awaiting first completed order"}
+                {r.completed ? "Converted" : "Awaiting first paid order"}
               </span>
             </div>
           ))

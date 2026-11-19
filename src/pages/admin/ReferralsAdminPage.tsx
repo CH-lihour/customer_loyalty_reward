@@ -169,6 +169,7 @@ export function AdminReferralsPage({
                   {r.createdAt}
                   {r.referrerCode && ` · ${r.referrerCode}`}
                   {r.completed && r.completedBy && ` · converted ${r.completedAt} by ${r.completedBy}`}
+                  {r.completed && !r.completedBy && r.completedAt && ` · converted ${r.completedAt} by first paid order`}
                 </span>
               </span>
               {r.completed ? (

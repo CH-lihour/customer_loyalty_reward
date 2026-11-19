@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { apiCatalog } from "./api";
+import { apiCatalog, apiStorefrontCatalog } from "./api";
 import { useShop } from "./shop";
 
 /**
@@ -43,4 +43,26 @@ export function useApiCatalog(token: string) {
   }, [reload]);
 
   return { loading, loadError, reload };
+}
+
+/**
+ * Loads the public storefront catalog into the store, so shoppers buy the API's products (and orders can
+ * name them by id). Off while `enabled` is false. A failure keeps the demo catalog.
+ */
+export function useStorefrontCatalog(enabled: boolean) {
+  const { syncCatalog } = useShop();
+  const sync = useRef(syncCatalog);
+  sync.current = syncCatalog;
+
+  useEffect(() => {
+    if (!enabled) return;
+    let cancelled = false;
+    apiStorefrontCatalog().then(
+      (catalog) => !cancelled && sync.current(catalog.categories, catalog.products),
+      () => {},
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [enabled]);
 }

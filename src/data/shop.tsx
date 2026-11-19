@@ -32,7 +32,7 @@ import {
 } from "./mockData";
 import { extraCustomers, extraProducts } from "./seedExtras";
 import { meetsTier, tierFor, tierRule, type TierTable } from "./tiers";
-import type { ApiProfile, ApiRole } from "./api";
+import type { ApiProfile, ApiRole, PlacedOrder } from "./api";
 import {
   adminPages,
   defaultAdminRoleLabels,
@@ -729,14 +729,23 @@ type Shop = State & {
   addToCart: (id: string, qty?: number) => void;
   /** Why checkout would fail now (bad delivery details, empty cart, stock), or null if it can go ahead. */
   checkoutError: (address: string, phone: string) => string | null;
-  checkout: (address: string, phone: string, payment?: OrderPayment) => string | null;
+  /** Records the cart as an order. `placed` is the API's copy, which already awarded the order's points. */
+  checkout: (address: string, phone: string, payment?: OrderPayment, placed?: PlacedOrder) => string | null;
   updateOrderStatus: (id: string, status: OrderStatus) => void;
   redeem: (id: string, variantId?: string) => string | null;
   /**
    * Brings a signed-in customer's balance, tier progress and history up to date with the API's ledger.
    * `rows` are their API ledger rows; activity recorded only in this browser is kept alongside them.
    */
-  syncCustomerPoints: (userId: string, balance: number, qualifying: number, rows: LoyaltyTransaction[], referralCode?: string) => void;
+  /** `account` carries what the API's profile knows: tier name, lifetime spend and orders placed. */
+  syncCustomerPoints: (
+    userId: string,
+    balance: number,
+    qualifying: number,
+    rows: LoyaltyTransaction[],
+    referralCode?: string,
+    account?: { tier?: string | null; totalSpent?: number; ordersCount?: number },
+  ) => void;
   /**
    * Replaces the catalog with the one loaded from the API. `stock` overrides counts by product id;
    * other products keep the count the store already has. Cart lines for removed products are dropped.
@@ -973,7 +982,7 @@ export function ShopProvider({ children }: { children: ReactNode }) {
           };
         }),
       checkoutError,
-      checkout: (address, phone, payment) => {
+      checkout: (address, phone, payment, placed) => {
         const error = checkoutError(address, phone);
         if (error) return error;
         const items = state.cart.map((ci) => ({
@@ -981,7 +990,7 @@ export function ShopProvider({ children }: { children: ReactNode }) {
           product: state.products.find((p) => p.id === ci.productId),
         }));
         const order: Order = {
-          id: `ORD-${Date.now()}`,
+          id: placed?.orderNumber ?? `ORD-${Date.now()}`,
           customerId: currentUser.id,
           customerName: currentUser.name,
           items: items.map(({ ci, product }) => ({
@@ -997,11 +1006,12 @@ export function ShopProvider({ children }: { children: ReactNode }) {
             0,
           ),
           status: "PENDING",
-          pointsEarned: 0,
+          pointsEarned: placed?.pointsEarned ?? 0,
           createdAt: date(),
           deliveryAddress: address.trim(),
           deliveryPhone: phone.trim(),
           ...(payment ? { payment } : {}),
+          ...(placed ? { pointsFromApi: true } : {}),
         };
         setState((s) => ({
           ...s,
@@ -1016,7 +1026,7 @@ export function ShopProvider({ children }: { children: ReactNode }) {
             s,
             currentUser,
             "ORDER_CREATED",
-            `Created order ${order.id} for $${order.total.toFixed(2)}${payment ? ` (paid by KHQR, ${payment.transactionId})` : ""}`,
+            `Created order ${order.id} for $${order.total.toFixed(2)}${payment ? ` (paid by KHQR, ${payment.transactionId})` : ""}${placed ? `, earned ${placed.pointsEarned} points` : ""}`,
           ),
         }));
         return null;
@@ -1058,7 +1068,15 @@ export function ShopProvider({ children }: { children: ReactNode }) {
                 p.stock +
                 (order.items.find((i) => i.productId === p.id)?.qty ?? 0),
             }));
-          if (status === "COMPLETED") {
+          if (status === "COMPLETED" && order.pointsFromApi) {
+            // The API awarded this order's points, and any referral bonus, when it was paid.
+            next.customers = next.customers.map((c) =>
+              c.id === user.id
+                ? { ...c, totalSpent: c.totalSpent + order.total, ordersCount: c.ordersCount + 1, lastOrder: date() }
+                : c,
+            );
+            next = awardBadges(next, user.id);
+          } else if (status === "COMPLETED") {
             const base = order.items.reduce((sum, item) => {
               return (
                 sum +
@@ -1600,7 +1618,7 @@ export function ShopProvider({ children }: { children: ReactNode }) {
             logs: staffLog(s, actor, "STOCKTAKE_CANCELLED", `Cancelled stocktake ${id}`),
           };
         }),
-      syncCustomerPoints: (userId, balance, qualifying, rows, referralCode) =>
+      syncCustomerPoints: (userId, balance, qualifying, rows, referralCode, account = {}) =>
         setState((s) => {
           const user = s.customers.find((c) => c.id === userId);
           if (!user) return s;
@@ -1615,19 +1633,27 @@ export function ShopProvider({ children }: { children: ReactNode }) {
           const points = Math.max(0, balance + local.reduce((sum, t) => sum + t.points, 0));
           const earned = qualifying + local.filter((t) => t.type === "EARN").reduce((sum, t) => sum + t.points, 0);
           const override = s.tierOverrides[userId];
-          const tier = override && s.tiers[override] ? override : tierFor(earned, s.tiers);
+          // The API's tier wins when the store knows it; otherwise work it out from qualifying points.
+          const apiTier = account.tier && s.tiers[account.tier] ? account.tier : null;
+          const tier = override && s.tiers[override] ? override : (apiTier ?? tierFor(earned, s.tiers));
+          const totalSpent = account.totalSpent ?? user.totalSpent;
+          const ordersCount = account.ordersCount ?? user.ordersCount;
           const mine = s.transactions.filter((t) => t.userId === userId);
           if (
             points === user.points &&
             tier === user.tier &&
             code === user.referralCode &&
+            totalSpent === user.totalSpent &&
+            ordersCount === user.ordersCount &&
             earned === s.qualifyingPoints[userId] &&
             JSON.stringify(history) === JSON.stringify(mine)
           )
             return s;
           return {
             ...s,
-            customers: s.customers.map((c) => (c.id === userId ? { ...c, points, tier, referralCode: code } : c)),
+            customers: s.customers.map((c) =>
+              c.id === userId ? { ...c, points, tier, referralCode: code, totalSpent, ordersCount } : c,
+            ),
             qualifyingPoints: { ...s.qualifyingPoints, [userId]: earned },
             transactions: [...history, ...s.transactions.filter((t) => t.userId !== userId)],
           };
