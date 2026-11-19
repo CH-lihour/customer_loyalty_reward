@@ -18,7 +18,7 @@ export function useCustomerPoints(token: string | null, userId: string | null) {
     let cancelled = false;
     Promise.all([apiProfile("customer", token), apiMyPoints(token)]).then(
       ([profile, rows]) => {
-        if (!cancelled) sync.current(userId, profile.points_balance ?? 0, profile.qualifying_points ?? 0, rows);
+        if (!cancelled) sync.current(userId, profile.points_balance ?? 0, profile.qualifying_points ?? 0, rows, profile.referral_code);
       },
       () => {},
     );

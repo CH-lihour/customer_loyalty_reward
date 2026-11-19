@@ -21,7 +21,7 @@ export type ApiProfile = {
   phone?: string | null;
   points_balance?: number;
   qualifying_points?: number;
-  /** Customer only, and only sent on registration. */
+  /** Customer only. `referral_code` is also sent by the profile; the others only on registration. */
   name_kh?: string | null;
   province?: string | null;
   referral_code?: string;
@@ -694,4 +694,101 @@ export async function apiAdjustPoints(token: string, customerId: string, points:
 /** The signed-in customer's own points ledger, newest first. */
 export async function apiMyPoints(token: string): Promise<LoyaltyTransaction[]> {
   return (await fetchAll<ApiPointRow>("/points", token)).map(toPointRow);
+}
+
+/** A friend who signed up with the customer's referral code. Only their name is shared. */
+export type MyReferral = { id: string; name: string; completed: boolean; createdAt: string };
+
+/** The signed-in customer's referral code, the bonus amounts and the friends who joined with it. */
+export type MyReferrals = {
+  code: string;
+  referrerPoints: number;
+  referredPoints: number;
+  converted: number;
+  pointsEarned: number;
+  referrals: MyReferral[];
+};
+
+export async function apiMyReferrals(token: string): Promise<MyReferrals> {
+  const { data } = await request<{
+    data: {
+      referral_code: string;
+      referrer_points: number;
+      referred_points: number;
+      stats: { total: number; converted: number; points_earned: number };
+      referrals: { id: number; name: string | null; is_completed: boolean; created_at: string }[];
+    };
+  }>("/referrals", { token });
+  return {
+    code: data.referral_code,
+    referrerPoints: data.referrer_points,
+    referredPoints: data.referred_points,
+    converted: data.stats.converted,
+    pointsEarned: data.stats.points_earned,
+    referrals: data.referrals.map((r) => ({
+      id: String(r.id),
+      name: r.name ?? "Customer",
+      completed: r.is_completed,
+      createdAt: r.created_at.slice(0, 10),
+    })),
+  };
+}
+
+type ApiReferral = {
+  id: number;
+  is_completed: boolean;
+  completed_at: string | null;
+  created_at: string;
+  referrer: { id: number; name: string; email: string; referral_code: string } | null;
+  referred: { id: number; name: string; email: string } | null;
+  completer: { id: number; name: string } | null;
+};
+
+/** A referral in the admin log. */
+export type AdminReferral = {
+  id: string;
+  referrerName: string;
+  referrerCode: string;
+  referredName: string;
+  completed: boolean;
+  completedAt: string;
+  completedBy: string;
+  createdAt: string;
+};
+
+/** Totals for the whole referral program, whatever the filters. */
+export type ReferralStats = { total: number; converted: number; pending: number; pointsPaidOut: number };
+
+const toReferral = (r: ApiReferral): AdminReferral => ({
+  id: String(r.id),
+  referrerName: r.referrer?.name ?? "Customer",
+  referrerCode: r.referrer?.referral_code ?? "",
+  referredName: r.referred?.name ?? "Customer",
+  completed: r.is_completed,
+  completedAt: r.completed_at?.slice(0, 10) ?? "",
+  completedBy: r.completer?.name ?? "",
+  createdAt: r.created_at.slice(0, 10),
+});
+
+/** One page of the referral log for staff, newest first, with the program's totals. */
+export async function apiReferralPage(
+  token: string,
+  query: PageQuery & { search?: string; status?: string },
+): Promise<ApiPage<AdminReferral> & { stats: ReferralStats }> {
+  const { data, meta, stats } = (await fetchPage<ApiReferral>("/backend/referrals", token, query)) as {
+    data: ApiReferral[];
+    meta: PageMeta;
+    stats: { total: number; converted: number; pending: number; points_paid_out: number };
+  };
+  return {
+    rows: data.map(toReferral),
+    meta,
+    stats: { total: stats.total, converted: stats.converted, pending: stats.pending, pointsPaidOut: stats.points_paid_out },
+  };
+}
+
+/** Marks a pending referral converted; the API gives both customers their bonus points. */
+export async function apiCompleteReferral(token: string, id: string): Promise<AdminReferral> {
+  const { data } = await request<{ data: ApiReferral }>(`/backend/referrals/${id}/complete`, { method: "PATCH", token });
+  return toReferral(data);
 }

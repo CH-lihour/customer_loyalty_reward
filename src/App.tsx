@@ -590,7 +590,9 @@ export default function App() {
         {adminPage === "badges" && (
           <AdminBadgesPage actorId={adminUser.id} token={session.token} />
         )}
-        {adminPage === "referrals" && <AdminReferralsPage />}
+        {adminPage === "referrals" && (
+          <AdminReferralsPage actorId={adminUser.id} token={session.token} />
+        )}
         {adminPage === "stock-alerts" && (
           <AdminStockAlertsPage actorId={adminUser.id} onNav={navigateAdmin} />
         )}
@@ -670,7 +672,9 @@ export default function App() {
       {customerPage === "points" && <PointsPage />}
       {customerPage === "tier" && <TierPage />}
       {customerPage === "badges" && <BadgesPage />}
-      {customerPage === "referrals" && <ReferralsPage />}
+      {customerPage === "referrals" && (
+        <ReferralsPage token={session?.role === "customer" ? session.token : null} />
+      )}
       {customerPage === "profile" && <ProfilePage />}
       {pendingProduct && (
         <AddToCartDialog

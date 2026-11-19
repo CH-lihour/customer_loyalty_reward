@@ -733,7 +733,7 @@ type Shop = State & {
    * Brings a signed-in customer's balance, tier progress and history up to date with the API's ledger.
    * `rows` are their API ledger rows; activity recorded only in this browser is kept alongside them.
    */
-  syncCustomerPoints: (userId: string, balance: number, qualifying: number, rows: LoyaltyTransaction[]) => void;
+  syncCustomerPoints: (userId: string, balance: number, qualifying: number, rows: LoyaltyTransaction[], referralCode?: string) => void;
   /**
    * Replaces the catalog with the one loaded from the API. `stock` overrides counts by product id;
    * other products keep the count the store already has. Cart lines for removed products are dropped.
@@ -1592,10 +1592,12 @@ export function ShopProvider({ children }: { children: ReactNode }) {
             logs: staffLog(s, actor, "STOCKTAKE_CANCELLED", `Cancelled stocktake ${id}`),
           };
         }),
-      syncCustomerPoints: (userId, balance, qualifying, rows) =>
+      syncCustomerPoints: (userId, balance, qualifying, rows, referralCode) =>
         setState((s) => {
           const user = s.customers.find((c) => c.id === userId);
           if (!user) return s;
+          // The API's code replaces one made up before the profile included it.
+          const code = referralCode || user.referralCode;
           const local = s.transactions.filter((t) => t.userId === userId && !t.id.startsWith("api-"));
           const history = [
             ...rows.map((t) => ({ ...t, id: `api-${t.id}`, userId, userName: user.name })),
@@ -1610,13 +1612,14 @@ export function ShopProvider({ children }: { children: ReactNode }) {
           if (
             points === user.points &&
             tier === user.tier &&
+            code === user.referralCode &&
             earned === s.qualifyingPoints[userId] &&
             JSON.stringify(history) === JSON.stringify(mine)
           )
             return s;
           return {
             ...s,
-            customers: s.customers.map((c) => (c.id === userId ? { ...c, points, tier } : c)),
+            customers: s.customers.map((c) => (c.id === userId ? { ...c, points, tier, referralCode: code } : c)),
             qualifyingPoints: { ...s.qualifyingPoints, [userId]: earned },
             transactions: [...history, ...s.transactions.filter((t) => t.userId !== userId)],
           };
