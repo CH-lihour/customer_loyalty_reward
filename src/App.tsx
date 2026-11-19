@@ -661,6 +661,7 @@ export default function App() {
         <CartPage
           onNav={(page) => navigateCustomer(page as CustomerPage)}
           guest={!session}
+          token={session?.role === "customer" ? session.token : null}
           onSignIn={() => {
             pendingRoute.current = { role: "customer", page: "cart" };
             navigate({ role: "login", loginRole: "customer" });

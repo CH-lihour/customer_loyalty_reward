@@ -65,6 +65,20 @@ export interface Order {
   createdAt: string;
   deliveryAddress?: string;
   deliveryPhone?: string;
+  /** How the order was paid. Orders placed before checkout took payment have none. */
+  payment?: OrderPayment;
+}
+
+/** A demo KHQR payment: the code was "paid" with the Simulate payment button, so no money moved. */
+export interface OrderPayment {
+  method: "KHQR";
+  status: "PAID";
+  /** The amount in the code, as KHQR writes it ("12.50" for USD, "50000" for KHR). */
+  amount: string;
+  currency: "USD" | "KHR";
+  billNumber: string;
+  transactionId: string;
+  paidAt: string;
 }
 
 export interface LoyaltyTransaction {

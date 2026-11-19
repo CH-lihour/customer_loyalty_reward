@@ -44,6 +44,11 @@ export function OrdersPage() {
                   >
                     {order.status}
                   </span>
+                  {order.payment && (
+                    <span className="text-xs font-semibold px-2 py-1 rounded-full text-green-400 bg-green-400/10">
+                      Paid · KHQR
+                    </span>
+                  )}
                   {order.pointsEarned > 0 && (
                     <span className="text-xs text-[var(--gold-mid)] font-semibold">
                       +{order.pointsEarned} pts earned
@@ -82,6 +87,12 @@ export function OrdersPage() {
               {order.deliveryAddress && (
                 <p className="mt-2 text-xs text-[var(--muted-foreground)]">
                   Delivery: {order.deliveryAddress} · {order.deliveryPhone}
+                </p>
+              )}
+              {order.payment && (
+                <p className="mt-1 text-xs text-[var(--muted-foreground)]">
+                  Paid by KHQR on {order.payment.paidAt.slice(0, 10)} · Transaction{" "}
+                  <span className="font-mono-data">{order.payment.transactionId}</span>
                 </p>
               )}
             </div>

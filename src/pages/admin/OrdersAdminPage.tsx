@@ -120,6 +120,13 @@ export function AdminOrdersPage() {
                 Deliver to: {o.deliveryAddress} · {o.deliveryPhone}
               </p>
             )}
+            {o.payment && (
+              <p className="mb-3 text-xs text-green-400">
+                Paid by KHQR · {o.payment.currency === "KHR" ? `${Number(o.payment.amount).toLocaleString()} ៛` : `$${o.payment.amount}`} on{" "}
+                {o.payment.paidAt.slice(0, 10)} · Transaction{" "}
+                <span className="font-mono-data">{o.payment.transactionId}</span>
+              </p>
+            )}
 
             <div className="flex justify-between items-center text-sm">
               <span className="text-[var(--muted-foreground)]">

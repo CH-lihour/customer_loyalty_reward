@@ -23,6 +23,7 @@ import {
   type Customer,
   type LoyaltyTransaction,
   type Order,
+  type OrderPayment,
   type OrderStatus,
   type Product,
   type ProductCategory,
@@ -726,7 +727,9 @@ type Shop = State & {
   money: (usd: number) => string;
   setCart: (cart: CartItem[]) => void;
   addToCart: (id: string, qty?: number) => void;
-  checkout: (address: string, phone: string) => string | null;
+  /** Why checkout would fail now (bad delivery details, empty cart, stock), or null if it can go ahead. */
+  checkoutError: (address: string, phone: string) => string | null;
+  checkout: (address: string, phone: string, payment?: OrderPayment) => string | null;
   updateOrderStatus: (id: string, status: OrderStatus) => void;
   redeem: (id: string, variantId?: string) => string | null;
   /**
@@ -877,6 +880,19 @@ export function ShopProvider({ children }: { children: ReactNode }) {
     return state.products.filter((p) => !hidden.has(p.category));
   }, [state.products, state.categories]);
 
+  const checkoutError = (address: string, phone: string) => {
+    if (!address.trim() || !phone.trim())
+      return "Enter a delivery address and phone number.";
+    if (!/^\+?\d[\d\s-]{7,14}$/.test(phone.trim()))
+      return "Enter a valid phone number.";
+    if (!state.cart.length) return "Your cart is empty.";
+    const unavailable = state.cart.some((ci) => {
+      const product = state.products.find((p) => p.id === ci.productId);
+      return !product || ci.qty < 1 || ci.qty > product.stock;
+    });
+    return unavailable ? "An item is unavailable or exceeds stock." : null;
+  };
+
   const shop = useMemo<Shop>(
     () => ({
       ...state,
@@ -956,23 +972,14 @@ export function ShopProvider({ children }: { children: ReactNode }) {
               : [...s.cart, { productId: id, qty }],
           };
         }),
-      checkout: (address, phone) => {
-        if (!address.trim() || !phone.trim())
-          return "Enter a delivery address and phone number.";
-        if (!/^\+?\d[\d\s-]{7,14}$/.test(phone.trim()))
-          return "Enter a valid phone number.";
-        if (!state.cart.length) return "Your cart is empty.";
+      checkoutError,
+      checkout: (address, phone, payment) => {
+        const error = checkoutError(address, phone);
+        if (error) return error;
         const items = state.cart.map((ci) => ({
           ci,
           product: state.products.find((p) => p.id === ci.productId),
         }));
-        if (
-          items.some(
-            ({ ci, product }) =>
-              !product || ci.qty < 1 || ci.qty > product.stock,
-          )
-        )
-          return "An item is unavailable or exceeds stock.";
         const order: Order = {
           id: `ORD-${Date.now()}`,
           customerId: currentUser.id,
@@ -994,6 +1001,7 @@ export function ShopProvider({ children }: { children: ReactNode }) {
           createdAt: date(),
           deliveryAddress: address.trim(),
           deliveryPhone: phone.trim(),
+          ...(payment ? { payment } : {}),
         };
         setState((s) => ({
           ...s,
@@ -1008,7 +1016,7 @@ export function ShopProvider({ children }: { children: ReactNode }) {
             s,
             currentUser,
             "ORDER_CREATED",
-            `Created order ${order.id} for $${order.total.toFixed(2)}`,
+            `Created order ${order.id} for $${order.total.toFixed(2)}${payment ? ` (paid by KHQR, ${payment.transactionId})` : ""}`,
           ),
         }));
         return null;

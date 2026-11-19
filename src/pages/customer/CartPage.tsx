@@ -4,15 +4,20 @@ import { tierRule } from "../../data/tiers";
 import { useFeedback } from "../../components/FeedbackProvider";
 import { ProductCover } from "../../components/ProductImage";
 import { Icon } from "../../components/Icon";
+import { KhqrPayment } from "../../components/KhqrPayment";
+import type { OrderPayment } from "../../data/mockData";
 
 export function CartPage({
   onNav,
   guest = false,
   onSignIn,
+  token = null,
 }: {
   onNav: (page: string) => void;
   guest?: boolean;
   onSignIn?: () => void;
+  /** The signed-in customer's API token, used to make and check the KHQR payment. */
+  token?: string | null;
 }) {
   const shop = useShop();
   const { notify } = useFeedback();
@@ -20,6 +25,10 @@ export function CartPage({
   const [address, setAddress] = useState("");
   const [phone, setPhone] = useState(guest ? "" : shop.currentUser.phone);
   const [error, setError] = useState("");
+  // Delivery details are in and the customer is on the KHQR step.
+  const [paying, setPaying] = useState(false);
+  // The payment of the order just placed, for the receipt shown after the cart empties.
+  const [paid, setPaid] = useState<OrderPayment | null>(null);
   const items = shop.cart
     .map((item) => ({
       ...item,
@@ -68,6 +77,38 @@ export function CartPage({
         .filter((c) => c.qty > 0),
     );
 
+  if (paid)
+    return (
+      <div className="text-center py-24 space-y-4">
+        <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-green-500/15 text-green-400">
+          <Icon name="check" className="h-8 w-8" />
+        </div>
+        <h1 className="font-display text-2xl">Payment received</h1>
+        <p className="text-sm text-[var(--muted-foreground)]">
+          Paid{" "}
+          {paid.currency === "KHR"
+            ? `${Number(paid.amount).toLocaleString()} ៛`
+            : `$${paid.amount}`}{" "}
+          by KHQR · Transaction {paid.transactionId}
+          <br />
+          Your order is placed. Points will arrive when it is completed.
+        </p>
+        <div className="flex justify-center gap-2">
+          <button
+            onClick={() => onNav("orders")}
+            className="rounded-lg bg-[var(--gold-mid)] text-[var(--background)] px-5 py-2 font-semibold"
+          >
+            View My Orders
+          </button>
+          <button
+            onClick={() => onNav("products")}
+            className="rounded-lg bg-[var(--secondary)] px-5 py-2"
+          >
+            Keep Shopping
+          </button>
+        </div>
+      </div>
+    );
   if (!items.length)
     return (
       <div className="text-center py-24 space-y-4">
@@ -157,21 +198,44 @@ export function CartPage({
           >
             Proceed to Checkout →
           </button>
+        ) : paying && token ? (
+          <KhqrPayment
+            token={token}
+            amount={
+              shop.currency === "KHR"
+                ? Math.round(subtotal * shop.exchangeRate)
+                : subtotal
+            }
+            currency={shop.currency}
+            onPaid={(payment) => {
+              const result = shop.checkout(address, phone, payment);
+              if (result) {
+                notify(result, "error");
+                return result;
+              }
+              setPaid(payment);
+              notify(
+                "Payment received. Your order is placed!",
+                "success",
+              );
+              return null;
+            }}
+            onCancel={() => setPaying(false)}
+          />
         ) : (
           <form
             className="space-y-3"
             onSubmit={(e) => {
               e.preventDefault();
-              const result = shop.checkout(address, phone);
+              const result = token
+                ? shop.checkoutError(address, phone)
+                : "Sign in again to pay with KHQR.";
               if (result) {
                 setError(result);
                 notify(result, "error");
               } else {
-                notify(
-                  "Order placed! Points will arrive when it is completed.",
-                  "success",
-                );
-                onNav("orders");
+                setError("");
+                setPaying(true);
               }
             }}
           >
@@ -193,7 +257,7 @@ export function CartPage({
               className="w-full rounded-lg border border-[var(--border)] bg-[var(--secondary)] px-3 py-2"
             />
             <p className="text-xs text-[var(--muted-foreground)]">
-              Demo order · No payment is collected
+              Payment by KHQR · Demo only, no money is charged
             </p>
             {error && (
               <p role="alert" className="text-sm text-red-400">
@@ -205,7 +269,7 @@ export function CartPage({
                 type="submit"
                 className="flex-1 rounded-lg bg-[var(--gold-mid)] text-[var(--background)] py-2 font-semibold"
               >
-                Place Order
+                Continue to Payment
               </button>
               <button
                 type="button"

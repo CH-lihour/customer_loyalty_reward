@@ -792,3 +792,62 @@ export async function apiCompleteReferral(token: string, id: string): Promise<Ad
   const { data } = await request<{ data: ApiReferral }>(`/backend/referrals/${id}/complete`, { method: "PATCH", token });
   return toReferral(data);
 }
+
+/** A demo KHQR payment. Nothing is charged: the code is "paid" with the Simulate payment button. */
+export type KhqrPayment = {
+  md5: string;
+  /** The KHQR string to draw as a QR code. */
+  qr: string;
+  amount: string;
+  currency: "USD" | "KHR";
+  billNumber: string;
+  merchantName: string;
+  status: "PENDING" | "PAID" | "EXPIRED";
+  expiresAt: string;
+  paidAt: string | null;
+  transactionId: string | null;
+};
+
+type ApiKhqrPayment = {
+  md5: string;
+  qr: string;
+  amount: string;
+  currency: "USD" | "KHR";
+  bill_number: string;
+  merchant_name: string;
+  status: KhqrPayment["status"];
+  expires_at: string;
+  paid_at: string | null;
+  transaction_id: string | null;
+};
+
+const toKhqrPayment = (p: ApiKhqrPayment): KhqrPayment => ({
+  md5: p.md5,
+  qr: p.qr,
+  amount: p.amount,
+  currency: p.currency,
+  billNumber: p.bill_number,
+  merchantName: p.merchant_name,
+  status: p.status,
+  expiresAt: p.expires_at,
+  paidAt: p.paid_at,
+  transactionId: p.transaction_id,
+});
+
+/** Makes a KHQR code for the amount; it expires after a few minutes. */
+export async function apiCreateKhqr(token: string, amount: number, currency: "USD" | "KHR"): Promise<KhqrPayment> {
+  const { data } = await request<{ data: ApiKhqrPayment }>("/payments/khqr", { method: "POST", token, body: { amount, currency } });
+  return toKhqrPayment(data);
+}
+
+/** Checks whether a KHQR code has been paid, by its MD5 as Bakong does. */
+export async function apiKhqrStatus(token: string, md5: string): Promise<KhqrPayment> {
+  const { data } = await request<{ data: ApiKhqrPayment }>(`/payments/khqr/${md5}`, { token });
+  return toKhqrPayment(data);
+}
+
+/** Pretends the customer paid the code from their banking app. */
+export async function apiSimulateKhqr(token: string, md5: string): Promise<KhqrPayment> {
+  const { data } = await request<{ data: ApiKhqrPayment }>(`/payments/khqr/${md5}/simulate`, { method: "POST", token });
+  return toKhqrPayment(data);
+}
